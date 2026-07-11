@@ -9,6 +9,8 @@ extends Node3D
 
 var _view = null # MatchSim or ClientReplica — the HUD/camera read either
 var _client_input_source: PlayerController = null
+var _was_charging := {}
+var _hit_stop_active := false
 
 @onready var _sim: MatchSim = $MatchSim
 @onready var _hud: Control = $UI/HUD
@@ -35,6 +37,7 @@ func _ready() -> void:
 	_view.player_eliminated.connect(_on_player_eliminated)
 	_view.round_ended.connect(_on_round_ended)
 	_view.block_destroyed.connect(_on_block_destroyed)
+	_view.player_hit.connect(_on_player_hit)
 	if Net.mode != Net.Mode.CLIENT and _sim.power_ups != null:
 		_sim.powerup_spawned.connect(func(id: int, type: int, at: Vector3) -> void:
 			if Net.is_server():
@@ -42,6 +45,10 @@ func _ready() -> void:
 		_sim.powerup_collected.connect(func(id: int, type: int, slot: int) -> void:
 			if Net.is_server():
 				Net.broadcast_powerup_collected(id, type, slot))
+	if Net.mode == Net.Mode.CLIENT:
+		Net.net_powerup_collected.connect(_on_powerup_collected_fx)
+	elif _sim.power_ups != null:
+		_sim.powerup_collected.connect(_on_powerup_collected_fx)
 	_hud.next_round_requested.connect(_on_next_round_requested)
 	_hud.menu_requested.connect(_on_menu_requested)
 	if Net.is_online():
@@ -50,6 +57,17 @@ func _ready() -> void:
 		Net.session_ended.connect(func(_reason: String) -> void:
 			get_tree().change_scene_to_file("res://scenes/main_menu.tscn"))
 	_maybe_schedule_screenshot()
+
+
+## Charge-start whooshes: watch the replicated/simulated charging flags.
+func _process(_delta: float) -> void:
+	if _view == null:
+		return
+	for p in _view.players:
+		var was: bool = _was_charging.get(p.slot, false)
+		if p.charging and not was:
+			SoundBank.play("whoosh", -12.0)
+		_was_charging[p.slot] = p.charging
 
 
 func _physics_process(_delta: float) -> void:
@@ -92,12 +110,42 @@ func _on_player_eliminated(_slot: int, at: Vector3) -> void:
 	if Net.is_server():
 		Net.broadcast_eliminated(_slot, at)
 	_spawn_splash(Vector3(at.x, -2.3, at.z))
+	SoundBank.play("splash")
+	_camera_rig.add_shake(0.5)
 
 
 func _on_block_destroyed(index: int, at: Vector3) -> void:
 	if Net.is_server():
 		Net.broadcast_block_destroyed(index, at)
 	_spawn_splash(at, Color(0.85, 0.93, 1.0))
+	SoundBank.play("crack", -6.0)
+	_camera_rig.add_shake(0.2)
+
+
+func _on_player_hit(attacker_slot: int, victim_slot: int, at: Vector3) -> void:
+	if Net.is_server():
+		Net.broadcast_player_hit(attacker_slot, victim_slot, at)
+	SoundBank.play("hit", -4.0)
+	_camera_rig.add_shake(0.4)
+	_spawn_splash(at + Vector3(0, 0.6, 0), Color(1.0, 0.95, 0.75))
+	_hit_stop()
+
+
+func _on_powerup_collected_fx(_id: int, type: int, _slot: int) -> void:
+	SoundBank.play("freeze" if type == PowerUpManager.Type.FREEZE_OTHERS else "pickup")
+
+
+## Brief global slow-mo on a landed hit. Offline only: online the server's
+## clock is authoritative and clients interpolate against it — warping either
+## side's time_scale would desync the feel it's meant to improve.
+func _hit_stop() -> void:
+	if Net.is_online() or _hit_stop_active:
+		return
+	_hit_stop_active = true
+	Engine.time_scale = 0.12
+	await get_tree().create_timer(0.055, true, false, true).timeout # ignores time_scale
+	Engine.time_scale = 1.0
+	_hit_stop_active = false
 
 
 func _on_round_ended(winner_slot: int) -> void:
@@ -111,8 +159,10 @@ func _on_round_ended(winner_slot: int) -> void:
 
 func _on_next_round_requested() -> void:
 	if Net.is_online():
-		Net.request_next_round()
+		Net.request_next_round() # server resets standings if the trophy was taken
 	else:
+		if MatchConfig.match_winner() >= 0:
+			MatchConfig.wins.fill(0) # trophy taken: fresh match
 		get_tree().reload_current_scene()
 
 

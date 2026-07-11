@@ -8,6 +8,7 @@ extends Node3D
 
 signal player_eliminated(slot: int, at: Vector3)
 signal round_ended(winner_slot: int)
+signal player_hit(attacker_slot: int, victim_slot: int, at: Vector3)
 
 const INTERP_DELAY_TICKS := 6.0   # 100 ms at the 60 Hz sim tick
 const MAX_BUFFER := 20
@@ -45,7 +46,7 @@ func start(player_count: int) -> void:
 	for i in player_count:
 		var p: SimPlayer = MatchSim.PLAYER_SCENE.instantiate()
 		add_child(p)
-		p.setup(i, CharacterStats.for_slot(i), MatchConfig.PLAYER_COLORS[i])
+		p.setup(i, MatchConfig.archetype_for_slot(i), MatchConfig.PLAYER_COLORS[i])
 		p.make_puppet()
 		var angle := TAU * float(i) / float(player_count)
 		var out := Vector3(sin(angle), 0.0, cos(angle))
@@ -57,6 +58,7 @@ func start(player_count: int) -> void:
 	Net.net_round_over.connect(_on_round_over)
 	Net.net_powerup_spawned.connect(_on_powerup_spawned)
 	Net.net_powerup_collected.connect(_on_powerup_collected)
+	Net.net_player_hit.connect(_on_player_hit)
 
 
 func _exit_tree() -> void:
@@ -66,6 +68,11 @@ func _exit_tree() -> void:
 		Net.net_round_over.disconnect(_on_round_over)
 		Net.net_powerup_spawned.disconnect(_on_powerup_spawned)
 		Net.net_powerup_collected.disconnect(_on_powerup_collected)
+		Net.net_player_hit.disconnect(_on_player_hit)
+
+
+func _on_player_hit(attacker_slot: int, victim_slot: int, at: Vector3) -> void:
+	player_hit.emit(attacker_slot, victim_slot, at)
 
 
 func _on_powerup_spawned(id: int, type: int, at: Vector3) -> void:

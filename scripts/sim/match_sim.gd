@@ -9,6 +9,7 @@ signal round_ended(winner_slot: int) # -1 = tie
 signal block_destroyed(index: int, at: Vector3)          # ice-blocks variant
 signal powerup_spawned(id: int, type: int, at: Vector3)  # power-ups variant
 signal powerup_collected(id: int, type: int, slot: int)
+signal player_hit(attacker_slot: int, victim_slot: int, at: Vector3)
 
 enum State { COUNTDOWN, PLAYING, OVER }
 
@@ -101,7 +102,9 @@ func _spawn_players(player_count: int, human_count: int,
 	for i in player_count:
 		var p: SimPlayer = PLAYER_SCENE.instantiate()
 		add_child(p)
-		p.setup(i, CharacterStats.for_slot(i), MatchConfig.PLAYER_COLORS[i])
+		p.setup(i, MatchConfig.archetype_for_slot(i), MatchConfig.PLAYER_COLORS[i])
+		p.landed_hit.connect(func(victim: SimPlayer) -> void:
+			player_hit.emit(p.slot, victim.slot, victim.global_position))
 		var angle := TAU * float(i) / float(player_count)
 		var out := Vector3(sin(angle), 0.0, cos(angle))
 		p.global_position = out * arena_radius * Tuning.SPAWN_RADIUS_FRACTION + Vector3(0, 1.0, 0)

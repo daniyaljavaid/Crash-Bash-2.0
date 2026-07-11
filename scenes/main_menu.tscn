@@ -83,6 +83,26 @@ text = "Arena variant"
 [node name="VariantOption" type="OptionButton" parent="Center/VBox/VariantRow"]
 layout_mode = 2
 
+[node name="TargetRow" type="HBoxContainer" parent="Center/VBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="TargetLabel" type="Label" parent="Center/VBox/TargetRow"]
+layout_mode = 2
+text = "Wins for trophy (1-5)"
+
+[node name="TargetSpin" type="SpinBox" parent="Center/VBox/TargetRow"]
+layout_mode = 2
+min_value = 1.0
+max_value = 5.0
+value = 3.0
+rounded = true
+
+[node name="CharRows" type="VBoxContainer" parent="Center/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
 [node name="StartButton" type="Button" parent="Center/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 28

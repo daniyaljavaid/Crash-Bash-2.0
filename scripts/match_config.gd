@@ -22,6 +22,8 @@ const VARIANT_NAMES := ["Classic", "Ice Blocks", "Melting Platform", "Power-Ups"
 var player_count := 4
 var human_count := 1
 var variant := Variant.CLASSIC
+var wins_target := 3                    # round wins needed to take the trophy
+var archetype_choices: Array[int] = []  # per slot; -1 = auto (cycle by slot)
 var wins: Array[int] = []
 
 var vsync_enabled := true
@@ -38,11 +40,30 @@ func _ready() -> void:
 	apply_video_settings()
 
 
-func start_new_match(players: int, humans: int, p_variant := Variant.CLASSIC) -> void:
+func start_new_match(players: int, humans: int, p_variant := Variant.CLASSIC,
+		p_wins_target := 3, choices: Array[int] = []) -> void:
 	player_count = clampi(players, 2, 8)
 	human_count = clampi(humans, 1, mini(4, player_count))
 	variant = p_variant
+	wins_target = clampi(p_wins_target, 1, 5)
+	archetype_choices = []
+	for i in player_count:
+		archetype_choices.append(choices[i] if i < choices.size() else -1)
 	_reset_wins()
+
+
+func archetype_for_slot(slot: int) -> Dictionary:
+	if slot < archetype_choices.size() and archetype_choices[slot] >= 0:
+		return CharacterStats.ARCHETYPES[archetype_choices[slot] % CharacterStats.ARCHETYPES.size()]
+	return CharacterStats.for_slot(slot)
+
+
+## Slot that has reached the trophy target, or -1 if the match is still open.
+func match_winner() -> int:
+	for i in wins.size():
+		if wins[i] >= wins_target:
+			return i
+	return -1
 
 
 func has_ice_blocks() -> bool:
@@ -73,7 +94,7 @@ func player_label(slot: int) -> String:
 			who = "BOT"
 	else:
 		who = "P%d" % (slot + 1) if slot < human_count else "BOT"
-	return "%s %s (%s)" % [who, COLOR_NAMES[slot], CharacterStats.for_slot(slot)["name"]]
+	return "%s %s (%s)" % [who, COLOR_NAMES[slot], archetype_for_slot(slot)["name"]]
 
 
 func apply_video_settings() -> void:

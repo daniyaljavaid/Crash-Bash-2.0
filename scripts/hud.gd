@@ -11,6 +11,7 @@ var _sim = null # MatchSim (offline/server) or ClientReplica (client) — same r
 var _cells: Array[Dictionary] = []
 var _prev_state := -1
 var _go_left := 0.0
+var _last_countdown := -1
 
 @onready var _timer_label: Label = $TimerLabel
 @onready var _banner: Label = $Banner
@@ -41,11 +42,16 @@ func _process(delta: float) -> void:
 	match _sim.state:
 		MatchSim.State.COUNTDOWN:
 			_banner.visible = true
-			_banner.text = str(int(ceil(_sim.countdown_left)))
+			var n := int(ceil(_sim.countdown_left))
+			_banner.text = str(n)
+			if n != _last_countdown:
+				_last_countdown = n
+				SoundBank.play("beep")
 		MatchSim.State.PLAYING:
 			if _prev_state == MatchSim.State.COUNTDOWN:
 				_go_left = GO_BANNER_TIME
 				_banner.text = "GO!"
+				SoundBank.play("go")
 			_go_left -= delta
 			_banner.visible = _go_left > 0.0
 		MatchSim.State.OVER:
@@ -90,14 +96,20 @@ func _on_round_ended(winner_slot: int) -> void:
 	else:
 		_banner.text = "TIE!"
 		_banner.add_theme_color_override("font_color", Color(1, 0.9, 0.4))
+	SoundBank.play("jingle", -6.0)
 	await get_tree().create_timer(1.5).timeout
 	_banner.visible = false
 	_show_end_panel(winner_slot)
 
 
 func _show_end_panel(winner_slot: int) -> void:
-	_winner_label.text = ("%s WINS THE ROUND" % MatchConfig.COLOR_NAMES[winner_slot]) \
-		if winner_slot >= 0 else "TIE!"
+	var trophy_slot := MatchConfig.match_winner()
+	if trophy_slot >= 0:
+		_winner_label.text = "🏆  %s TAKES THE TROPHY  🏆" % MatchConfig.player_label(trophy_slot)
+		_winner_label.add_theme_color_override("font_color", MatchConfig.PLAYER_COLORS[trophy_slot])
+	else:
+		_winner_label.text = ("%s WINS THE ROUND" % MatchConfig.COLOR_NAMES[winner_slot]) \
+			if winner_slot >= 0 else "TIE!"
 	for child in _score_rows.get_children():
 		child.queue_free()
 	for i in _sim.players.size():
@@ -107,7 +119,8 @@ func _show_end_panel(winner_slot: int) -> void:
 		swatch.color = MatchConfig.PLAYER_COLORS[i]
 		swatch.custom_minimum_size = Vector2(18, 18)
 		var label := Label.new()
-		label.text = "%s — %d wins" % [MatchConfig.player_label(i), MatchConfig.wins[i]]
+		label.text = "%s — %d / %d wins" % [
+			MatchConfig.player_label(i), MatchConfig.wins[i], MatchConfig.wins_target]
 		if i == winner_slot:
 			label.add_theme_color_override("font_color", Color(1, 0.9, 0.4))
 		row.add_child(swatch)
@@ -115,6 +128,8 @@ func _show_end_panel(winner_slot: int) -> void:
 		_score_rows.add_child(row)
 	# Online, only the lobby leader may advance the match.
 	var next_btn: Button = $EndPanel/Panel/VBox/Buttons/NextButton
+	next_btn.text = "New Match" if trophy_slot >= 0 else "Next Round"
+	next_btn.disabled = false
 	if Net.is_online() and not Net.i_am_leader():
 		next_btn.text = "Waiting for host..."
 		next_btn.disabled = true

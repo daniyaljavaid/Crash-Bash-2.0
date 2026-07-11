@@ -5,6 +5,10 @@ extends Control
 @onready var _players_spin: SpinBox = $Center/VBox/PlayersRow/PlayersSpin
 @onready var _humans_spin: SpinBox = $Center/VBox/HumansRow/HumansSpin
 @onready var _variant_opt: OptionButton = $Center/VBox/VariantRow/VariantOption
+@onready var _target_spin: SpinBox = $Center/VBox/TargetRow/TargetSpin
+@onready var _char_rows: VBoxContainer = $Center/VBox/CharRows
+
+var _char_opts: Array[OptionButton] = []
 @onready var _ip_edit: LineEdit = $Center/VBox/NetRow/IpEdit
 @onready var _port_edit: LineEdit = $Center/VBox/NetRow/PortEdit
 @onready var _error_label: Label = $Center/VBox/ErrorLabel
@@ -22,14 +26,41 @@ func _ready() -> void:
 	for name in MatchConfig.VARIANT_NAMES:
 		_variant_opt.add_item(name)
 	_variant_opt.selected = MatchConfig.variant
+	_target_spin.value = MatchConfig.wins_target
+	_humans_spin.value_changed.connect(func(_v: float) -> void: _rebuild_char_rows())
+	_rebuild_char_rows()
 	_ip_edit.text = MatchConfig.last_ip
 	_port_edit.text = str(MatchConfig.last_port)
 	$Center/VBox/StartButton.grab_focus()
 
 
+## One character dropdown per local human (Auto + the four archetypes).
+func _rebuild_char_rows() -> void:
+	for child in _char_rows.get_children():
+		child.queue_free()
+	_char_opts = []
+	for i in int(_humans_spin.value):
+		var row := HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.add_theme_constant_override("separation", 12)
+		var label := Label.new()
+		label.text = "P%d character" % (i + 1)
+		var opt := OptionButton.new()
+		opt.add_item("Auto")
+		for arch in CharacterStats.ARCHETYPES:
+			opt.add_item(arch["name"])
+		row.add_child(label)
+		row.add_child(opt)
+		_char_rows.add_child(row)
+		_char_opts.append(opt)
+
+
 func _on_start_local() -> void:
+	var choices: Array[int] = []
+	for opt in _char_opts:
+		choices.append(opt.selected - 1) # item 0 = Auto = -1
 	MatchConfig.start_new_match(int(_players_spin.value), int(_humans_spin.value),
-		_variant_opt.selected as MatchConfig.Variant)
+		_variant_opt.selected as MatchConfig.Variant, int(_target_spin.value), choices)
 	get_tree().change_scene_to_file("res://scenes/arena.tscn")
 
 
@@ -80,6 +111,8 @@ func _bootstrap_dedicated_server() -> bool:
 			Net.autostart_humans = arg.get_slice("=", 1).to_int()
 		elif arg.begins_with("autonext="):
 			Net.autonext_seconds = arg.get_slice("=", 1).to_int()
+		elif arg.begins_with("target="):
+			Net.lobby_wins_target = clampi(arg.get_slice("=", 1).to_int(), 1, 5)
 	var err := Net.host(port, true)
 	if err != OK:
 		printerr("[server] failed to bind port %d" % port)

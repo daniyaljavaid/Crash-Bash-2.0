@@ -17,6 +17,7 @@ Tuning="*res://scripts/sim/tuning.gd"
 InputSetup="*res://scripts/input_setup.gd"
 MatchConfig="*res://scripts/match_config.gd"
 Net="*res://scripts/net/network_manager.gd"
+SoundBank="*res://scripts/sound_bank.gd"
 
 [display]
 

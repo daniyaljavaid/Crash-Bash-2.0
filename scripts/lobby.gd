@@ -7,6 +7,8 @@ extends Control
 @onready var _player_list: VBoxContainer = $Center/VBox/PlayerList
 @onready var _players_spin: SpinBox = $Center/VBox/PlayersRow/PlayersSpin
 @onready var _variant_opt: OptionButton = $Center/VBox/VariantRow/VariantOption
+@onready var _target_spin: SpinBox = $Center/VBox/TargetRow/TargetSpin
+@onready var _char_opt: OptionButton = $Center/VBox/CharRow/CharOption
 @onready var _bots_check: CheckButton = $Center/VBox/BotsCheck
 @onready var _start_btn: Button = $Center/VBox/StartButton
 
@@ -16,14 +18,23 @@ func _ready() -> void:
 	Net.session_ended.connect(_on_session_ended)
 	for name in MatchConfig.VARIANT_NAMES:
 		_variant_opt.add_item(name)
+	_char_opt.add_item("Auto")
+	for arch in CharacterStats.ARCHETYPES:
+		_char_opt.add_item(arch["name"])
+	# Populate control values BEFORE wiring change-signals: a programmatic set
+	# fires value_changed, and a partial push would stomp the server's config
+	# with the other controls' defaults.
+	_players_spin.set_value_no_signal(Net.lobby_player_count)
+	_bots_check.set_pressed_no_signal(Net.lobby_fill_bots)
+	_variant_opt.selected = Net.lobby_variant
+	_target_spin.set_value_no_signal(Net.lobby_wins_target)
+	_char_opt.item_selected.connect(func(i: int) -> void: Net.set_my_archetype(i - 1))
 	_players_spin.value_changed.connect(func(_v: float) -> void: _push_config())
 	_bots_check.toggled.connect(func(_on: bool) -> void: _push_config())
 	_variant_opt.item_selected.connect(func(_i: int) -> void: _push_config())
+	_target_spin.value_changed.connect(func(_v: float) -> void: _push_config())
 	_start_btn.pressed.connect(func() -> void: Net.request_start())
 	$Center/VBox/LeaveButton.pressed.connect(_on_leave)
-	_players_spin.value = Net.lobby_player_count
-	_bots_check.button_pressed = Net.lobby_fill_bots
-	_variant_opt.selected = Net.lobby_variant
 	_refresh()
 
 
@@ -32,7 +43,7 @@ func _push_config() -> void:
 	# the command line instead (client leader can't edit it — M2 limitation).
 	if Net.is_server():
 		Net.set_lobby_config(int(_players_spin.value), _bots_check.button_pressed,
-			_variant_opt.selected)
+			_variant_opt.selected, int(_target_spin.value))
 
 
 func _refresh() -> void:
@@ -73,10 +84,12 @@ func _refresh() -> void:
 	_players_spin.editable = editable
 	_bots_check.disabled = not editable
 	_variant_opt.disabled = not editable
+	_target_spin.editable = editable
 	if not editable:
 		_players_spin.set_value_no_signal(Net.lobby_player_count)
 		_bots_check.set_pressed_no_signal(Net.lobby_fill_bots)
 		_variant_opt.selected = Net.lobby_variant
+		_target_spin.set_value_no_signal(Net.lobby_wins_target)
 	_start_btn.visible = Net.i_am_leader()
 	_start_btn.disabled = Net.humans_connected() == 0 \
 		or (not Net.lobby_fill_bots and Net.humans_connected() < 2)

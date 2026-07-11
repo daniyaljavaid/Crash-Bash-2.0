@@ -71,6 +71,34 @@ text = "Arena variant"
 [node name="VariantOption" type="OptionButton" parent="Center/VBox/VariantRow"]
 layout_mode = 2
 
+[node name="TargetRow" type="HBoxContainer" parent="Center/VBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="TargetLabel" type="Label" parent="Center/VBox/TargetRow"]
+layout_mode = 2
+text = "Wins for trophy"
+
+[node name="TargetSpin" type="SpinBox" parent="Center/VBox/TargetRow"]
+layout_mode = 2
+min_value = 1.0
+max_value = 5.0
+value = 3.0
+rounded = true
+
+[node name="CharRow" type="HBoxContainer" parent="Center/VBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="CharLabel" type="Label" parent="Center/VBox/CharRow"]
+layout_mode = 2
+text = "Your character"
+
+[node name="CharOption" type="OptionButton" parent="Center/VBox/CharRow"]
+layout_mode = 2
+
 [node name="BotsCheck" type="CheckButton" parent="Center/VBox"]
 layout_mode = 2
 button_pressed = true

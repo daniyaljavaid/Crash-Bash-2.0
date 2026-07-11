@@ -15,6 +15,7 @@ signal snapshot_received(tick: int, state: int, time_left: float, countdown_left
 signal net_eliminated(slot: int, at: Vector3)
 signal net_round_over(winner_slot: int, wins: Array)
 signal net_block_destroyed(index: int, at: Vector3)
+signal net_player_hit(attacker_slot: int, victim_slot: int, at: Vector3)
 signal net_powerup_spawned(id: int, type: int, at: Vector3)
 signal net_powerup_collected(id: int, type: int, slot: int)
 signal session_ended(reason: String)
@@ -38,6 +39,10 @@ var waiting_peer_ids: Array[int] = []  # joined mid-round; merged into the roste
 var lobby_player_count := 4
 var lobby_fill_bots := true
 var lobby_variant := 0                 # MatchConfig.Variant, host/leader-chosen
+var lobby_wins_target := 3
+
+# server-side: peer id -> archetype choice (-1 = auto)
+var _peer_archetypes := {}
 var autostart_humans := 0              # auto-start once N humans joined (0 = off)
 var autonext_seconds := 0              # server: auto-start next round after N s (0 = manual)
 var current_port := DEFAULT_PORT
@@ -115,6 +120,7 @@ func _end_session(reason: String) -> void:
 	waiting_peer_ids = []
 	latest_inputs = {}
 	_wins_by_identity = {}
+	_peer_archetypes = {}
 	_round_active = false
 	match_in_progress = false
 	if reason != "":
@@ -144,6 +150,7 @@ func _on_peer_disconnected(id: int) -> void:
 	lobby_peer_ids.erase(id)
 	waiting_peer_ids.erase(id)
 	latest_inputs.erase(id)
+	_peer_archetypes.erase(id)
 	_broadcast_lobby()
 	lobby_updated.emit()
 
@@ -152,17 +159,34 @@ func _on_connected_to_server() -> void:
 	lobby_updated.emit()
 
 
-func set_lobby_config(player_count: int, fill_bots: bool, variant: int) -> void:
+func set_lobby_config(player_count: int, fill_bots: bool, variant: int,
+		wins_target := 3) -> void:
 	lobby_player_count = clampi(player_count, 2, 8)
 	lobby_fill_bots = fill_bots
 	lobby_variant = clampi(variant, 0, MatchConfig.Variant.size() - 1)
+	lobby_wins_target = clampi(wins_target, 1, 5)
 	_broadcast_lobby()
+
+
+## Any peer (including the host) declares which archetype they want.
+func set_my_archetype(choice: int) -> void:
+	if is_server():
+		_peer_archetypes[1] = choice
+	else:
+		_c2s_set_archetype.rpc_id(1, choice)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _c2s_set_archetype(choice: int) -> void:
+	if is_server():
+		_peer_archetypes[multiplayer.get_remote_sender_id()] = clampi(choice, -1, 3)
 
 
 func _broadcast_lobby() -> void:
 	if is_server():
 		_s2c_lobby_state.rpc(lobby_peer_ids, waiting_peer_ids,
-			lobby_player_count, lobby_fill_bots, lobby_variant, _round_active)
+			lobby_player_count, lobby_fill_bots, lobby_variant, lobby_wins_target,
+			_round_active)
 		lobby_updated.emit()
 		if autostart_humans > 0 and not _round_active \
 				and lobby_peer_ids.size() >= autostart_humans:
@@ -171,12 +195,13 @@ func _broadcast_lobby() -> void:
 
 @rpc("authority", "call_remote", "reliable")
 func _s2c_lobby_state(peer_ids: Array, waiting_ids: Array, player_count: int,
-		fill_bots: bool, variant: int, in_progress: bool) -> void:
+		fill_bots: bool, variant: int, wins_target: int, in_progress: bool) -> void:
 	lobby_peer_ids.assign(peer_ids)
 	waiting_peer_ids.assign(waiting_ids)
 	lobby_player_count = player_count
 	lobby_fill_bots = fill_bots
 	lobby_variant = variant
+	lobby_wins_target = wins_target
 	match_in_progress = in_progress
 	lobby_updated.emit()
 
@@ -230,16 +255,23 @@ func _try_start(requester: int) -> void:
 	slot_peers = []
 	for slot in count:
 		slot_peers.append(lobby_peer_ids[slot] if slot < humans else 0)
+	# A finished trophy match starts standings from scratch.
+	for w in _wins_by_identity.values():
+		if w >= lobby_wins_target:
+			_wins_by_identity = {}
+			break
 	# Slot-indexed wins for the HUD, rebuilt from identity-keyed history so
 	# standings survive players joining/leaving between rounds.
 	var wins: Array[int] = []
+	var choices: Array[int] = []
 	for slot in count:
 		wins.append(_wins_by_identity.get(_slot_identity(slot), 0))
+		choices.append(_peer_archetypes.get(slot_peers[slot], -1) if slot_peers[slot] != 0 else -1)
 	MatchConfig.wins = wins
 	_round_active = true
 	match_in_progress = true
-	_s2c_match_start.rpc(slot_peers, wins, lobby_variant)
-	_apply_match_start(slot_peers, wins, lobby_variant)
+	_s2c_match_start.rpc(slot_peers, wins, lobby_variant, lobby_wins_target, choices)
+	_apply_match_start(slot_peers, wins, lobby_variant, lobby_wins_target, choices)
 
 
 func _slot_identity(slot: int) -> String:
@@ -248,19 +280,23 @@ func _slot_identity(slot: int) -> String:
 
 
 @rpc("authority", "call_remote", "reliable")
-func _s2c_match_start(assignments: Array, wins: Array, variant: int) -> void:
+func _s2c_match_start(assignments: Array, wins: Array, variant: int,
+		wins_target: int, choices: Array) -> void:
 	_round_active = true
-	_apply_match_start(assignments, wins, variant)
+	_apply_match_start(assignments, wins, variant, wins_target, choices)
 
 
-func _apply_match_start(assignments: Array, wins: Array, variant: int) -> void:
+func _apply_match_start(assignments: Array, wins: Array, variant: int,
+		wins_target: int, choices: Array) -> void:
 	slot_peers.assign(assignments)
 	my_slot = slot_peers.find(multiplayer.get_unique_id())
 	match_in_progress = true
-	print("[net] match starting: slots=%s my_slot=%d wins=%s variant=%d" % [
-		str(assignments), my_slot, str(wins), variant])
+	print("[net] match starting: slots=%s my_slot=%d wins=%s variant=%d target=%d choices=%s" % [
+		str(assignments), my_slot, str(wins), variant, wins_target, str(choices)])
 	MatchConfig.player_count = slot_peers.size()
 	MatchConfig.variant = variant as MatchConfig.Variant
+	MatchConfig.wins_target = wins_target
+	MatchConfig.archetype_choices.assign(choices)
 	MatchConfig.wins.assign(wins)
 	match_started.emit()
 	get_tree().change_scene_to_file("res://scenes/arena.tscn")
@@ -374,6 +410,15 @@ func broadcast_eliminated(slot: int, at: Vector3) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _s2c_eliminated(slot: int, at: Vector3) -> void:
 	net_eliminated.emit(slot, at)
+
+
+func broadcast_player_hit(attacker_slot: int, victim_slot: int, at: Vector3) -> void:
+	_s2c_player_hit.rpc(attacker_slot, victim_slot, at)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _s2c_player_hit(attacker_slot: int, victim_slot: int, at: Vector3) -> void:
+	net_player_hit.emit(attacker_slot, victim_slot, at)
 
 
 func broadcast_block_destroyed(index: int, at: Vector3) -> void:

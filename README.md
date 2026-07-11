@@ -3,6 +3,27 @@
 Original 3D sumo party game for Godot 4.4+. Four-to-eight players on a slippery
 ice floe; shove everyone else into the water; last one standing wins.
 
+## Milestone 5 — meta & polish
+
+- **Character select** — each local human picks an archetype in the main menu;
+  online, everyone picks their own in the lobby ("Auto" keeps the slot-cycled
+  default). Bots stay on Auto.
+- **Trophy structure** — first to N round-wins (default 3, configurable 1-5 in
+  menu/lobby, `target=N` on dedicated servers) takes the trophy; the end panel
+  announces it and "New Match" restarts standings from zero. Online, standings
+  reset server-side when the next match begins.
+- **Sound** — all SFX are synthesized at startup (`scripts/sound_bank.gd`):
+  countdown beeps, charge whoosh, hit thump, splash, block crack, pickups,
+  win jingle. No audio asset files.
+- **Juice** — camera shake on hits/eliminations/block smashes, impact sparks,
+  and a brief hit-stop (offline only — warping time on a networked simulation
+  desyncs it, so online keeps shake + sparks).
+- **Characters** — procedural penguin-style models built from Godot primitives
+  (body, belly, eyes, beak, flippers, feet) with a speed-driven waddle and a
+  charge lean. Deliberate deviation from the CC0-model plan: zero external
+  assets keeps the project self-contained; the visual rig is isolated under
+  `Visual/` in `scenes/player.tscn`, so swapping in a GLB later is contained.
+
 ## Milestone 4 — arena variants
 
 Pick a variant in the main menu (local) or lobby (host/leader). Dedicated

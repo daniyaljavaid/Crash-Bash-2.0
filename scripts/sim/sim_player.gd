@@ -4,6 +4,8 @@ extends CharacterBody3D
 ## charge, alive) lives here. Never reads input devices — MatchSim hands it a
 ## PlayerInput each tick. Visuals (mesh color, HUD) only READ this state.
 
+signal landed_hit(victim: SimPlayer) # charge connected; presentation juice hook
+
 var slot := 0
 var stats := {}          # one entry of CharacterStats.ARCHETYPES
 var stamina := Tuning.STAMINA_MAX
@@ -26,9 +28,11 @@ var _prev_charge_held := false
 var _hit_landed := false
 var _base_color := Color.WHITE
 var _was_frozen := false
+var _anim_t := 0.0
+var _last_pos := Vector3.ZERO
 
-@onready var _mesh: MeshInstance3D = $Mesh
-@onready var _nose: MeshInstance3D = $Nose
+@onready var _visual: Node3D = $Visual
+@onready var _body: MeshInstance3D = $Visual/Body
 
 
 func setup(p_slot: int, p_stats: Dictionary, color: Color) -> void:
@@ -37,12 +41,40 @@ func setup(p_slot: int, p_stats: Dictionary, color: Color) -> void:
 	collision_layer = 2
 	collision_mask = 3 # platform (1) + other players (2)
 	_base_color = color
+	var body_mat := StandardMaterial3D.new()
+	body_mat.albedo_color = color
+	_body.material_override = body_mat
+	$Visual/FlipperL.material_override = _flat(color.darkened(0.25))
+	$Visual/FlipperR.material_override = _flat(color.darkened(0.25))
+	var white := _flat(Color(0.95, 0.96, 1.0))
+	$Visual/Belly.material_override = white
+	var eye := _flat(Color(0.08, 0.08, 0.1))
+	$Visual/EyeL.material_override = eye
+	$Visual/EyeR.material_override = eye
+	var orange := _flat(Color(0.95, 0.6, 0.15))
+	$Visual/Beak.material_override = orange
+	$Visual/FootL.material_override = orange
+	$Visual/FootR.material_override = orange
+
+
+static func _flat(color: Color) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
-	_mesh.material_override = mat
-	var nose_mat := StandardMaterial3D.new()
-	nose_mat.albedo_color = color.lightened(0.6)
-	_nose.material_override = nose_mat
+	return mat
+
+
+## Presentation only: waddle by measured movement (works for both the sim body
+## and client puppets, which are moved externally), lean into charges.
+func _process(delta: float) -> void:
+	if not alive:
+		return
+	var speed := Vector2(global_position.x - _last_pos.x,
+		global_position.z - _last_pos.z).length() / maxf(delta, 0.0001)
+	_last_pos = global_position
+	_anim_t += delta * clampf(speed, 0.0, 8.0) * 1.7
+	var waddle := sin(_anim_t) * clampf(speed / 8.0, 0.0, 1.0) * 0.18
+	_visual.rotation.z = waddle
+	_visual.rotation.x = -0.4 if charging else 0.0
 
 
 ## One authoritative simulation step. dt is the fixed physics delta.
@@ -129,17 +161,15 @@ func _clear_size_effect() -> void:
 ## Mesh-only scale (collision shape stays constant — the size effect is a stat
 ## change with a visual tell, not a hitbox change). Also used by puppets.
 func set_visual_scale(s: float) -> void:
-	_mesh.scale = Vector3.ONE * s
-	_nose.scale = Vector3.ONE * s
-	_nose.position = Vector3(0, 0.35, -0.45) * s
+	_visual.scale = Vector3.ONE * s
 
 
 ## Ice tint while frozen. Also used by puppets (driven from snapshot flags).
 func set_frozen_visual(frozen: bool) -> void:
-	var mat := _mesh.material_override as StandardMaterial3D
+	var mat := _body.material_override as StandardMaterial3D
 	if mat == null:
 		return
-	mat.albedo_color = mat.albedo_color.lerp(Color(0.6, 0.85, 1.0), 0.7) if frozen \
+	mat.albedo_color = _base_color.lerp(Color(0.6, 0.85, 1.0), 0.7) if frozen \
 		else _base_color
 
 
@@ -214,6 +244,7 @@ func _resolve_contacts(dt: float, pre_move_speed: float) -> void:
 			_end_charge(0.0)
 			velocity.x = -charge_dir.x * Tuning.CHARGE_RECOIL
 			velocity.z = -charge_dir.z * Tuning.CHARGE_RECOIL
+			landed_hit.emit(other)
 		elif not charging:
 			var push: Vector3 = other.global_position - global_position
 			push.y = 0.0
