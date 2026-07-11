@@ -32,6 +32,8 @@ var power_ups: PowerUpManager = null
 var tile_grid: TileGrid = null
 var snowballs: SnowballManager = null
 var pucks: PuckManager = null
+var boulders: BoulderManager = null
+var race: RaceManager = null
 var minigame := MatchConfig.Minigame.SHOVE
 
 var _started := false
@@ -82,6 +84,20 @@ func start_match(player_count: int, human_count: int,
 		snowballs.ball_hit.connect(
 			func(attacker: int, victim: int, at: Vector3) -> void: player_hit.emit(attacker, victim, at))
 	_spawn_players(player_count, human_count, controllers_override)
+	if minigame == MatchConfig.Minigame.BOULDER:
+		boulders = BoulderManager.new()
+		add_child(boulders)
+		for p in players:
+			p.throw_mode = true
+		boulders.setup(self)
+		boulders.hp_changed.connect(_on_goal_scored) # same lives-event plumbing
+		boulders.thrown.connect(
+			func(id: int, from: Vector3, dir: Vector3) -> void: ball_spawned.emit(id, from, dir))
+	elif minigame == MatchConfig.Minigame.RACE:
+		race = RaceManager.new()
+		add_child(race)
+		race.setup(self)
+		race.lap_completed.connect(_on_goal_scored) # laps ride the lives channel
 	if minigame == MatchConfig.Minigame.GOAL:
 		pucks = PuckManager.new()
 		add_child(pucks)
@@ -97,6 +113,9 @@ func start_match(player_count: int, human_count: int,
 	_started = true
 
 
+## Shared "counter changed" plumbing: Puck Panic lives, Boulder Brawl hearts,
+## and Floe Dash laps all ride this channel. Only a zero eliminates (laps
+## count up, so races never trip it).
 func _on_goal_scored(slot: int, lives_left: int, at: Vector3) -> void:
 	goal_scored.emit(slot, lives_left, at)
 	if lives_left <= 0 and players[slot].alive:
@@ -126,20 +145,33 @@ func _physics_process(delta: float) -> void:
 				snowballs.tick(delta)
 			if pucks != null:
 				pucks.tick(delta)
+			if boulders != null:
+				boulders.tick(delta)
 			for i in players.size():
 				var p := players[i]
 				if p.alive:
 					p.sim_tick(controllers[i].get_player_input(p, self), delta)
 					if tile_grid != null and p.is_on_floor():
 						tile_grid.claim_under(p)
+			if race != null:
+				race.tick()
 			_check_round_end()
 		State.OVER:
 			pass
 
 
-## Puck Panic lives for the HUD; -1 in other modes (ClientReplica mirrors this).
+## Lives/hearts for the HUD; -1 in other modes (ClientReplica mirrors this).
 func player_lives(slot: int) -> int:
-	return pucks.lives[slot] if pucks != null else -1
+	if pucks != null:
+		return pucks.lives[slot]
+	if boulders != null:
+		return boulders.lives[slot]
+	return -1
+
+
+## Race progress in radians; -1.0 outside Floe Dash (ClientReplica mirrors).
+func player_progress(slot: int) -> float:
+	return race.progress[slot] if race != null else -1.0
 
 
 func alive_count() -> int:
@@ -266,8 +298,8 @@ func _on_kill_zone_body_entered(body: Node3D) -> void:
 	if not (body is SimPlayer) or not body.alive:
 		return
 	var at: Vector3 = body.global_position
-	if minigame == MatchConfig.Minigame.TILE:
-		# Tile Rush: falling costs claiming time, not the round.
+	if minigame == MatchConfig.Minigame.TILE or minigame == MatchConfig.Minigame.RACE:
+		# Tile Rush / Floe Dash: falling costs time, not the round.
 		_respawn(body, at)
 		return
 	body.eliminate()
@@ -278,11 +310,15 @@ func _on_kill_zone_body_entered(body: Node3D) -> void:
 
 
 func _respawn(p: SimPlayer, fell_at: Vector3) -> void:
-	var angle := TAU * float(p.slot) / float(players.size())
-	var out := Vector3(sin(angle), 0.0, cos(angle))
 	p.velocity = Vector3.ZERO
 	p.stagger_left = 0.0
-	p.global_position = out * arena_radius * Tuning.SPAWN_RADIUS_FRACTION + Vector3(0, 1.0, 0)
+	if race != null:
+		# Back onto the lane where they fell — no free progress either way.
+		p.global_position = race.respawn_position(fell_at)
+	else:
+		var angle := TAU * float(p.slot) / float(players.size())
+		var out := Vector3(sin(angle), 0.0, cos(angle))
+		p.global_position = out * arena_radius * Tuning.SPAWN_RADIUS_FRACTION + Vector3(0, 1.0, 0)
 	p.reset_physics_interpolation()
 	player_respawned.emit(p.slot, fell_at)
 
@@ -292,6 +328,15 @@ func _check_round_end() -> void:
 		# No eliminations: the clock decides, most tiles wins.
 		if time_left <= 0.0:
 			winner_slot = tile_grid.leader()
+			_finish()
+		return
+	if minigame == MatchConfig.Minigame.RACE:
+		var done := race.finished_slot()
+		if done >= 0:
+			winner_slot = done
+			_finish()
+		elif time_left <= 0.0:
+			winner_slot = race.leader()
 			_finish()
 		return
 	var last_alive: SimPlayer = null
@@ -304,8 +349,13 @@ func _check_round_end() -> void:
 		winner_slot = last_alive.slot if n == 1 else -1
 		_finish()
 	elif time_left <= 0.0:
-		# Puck Panic resolves the clock by remaining lives; sumo modes tie.
-		winner_slot = pucks.leader() if pucks != null else -1
+		# Lives-based modes resolve the clock by remaining lives; sumo ties.
+		if pucks != null:
+			winner_slot = pucks.leader()
+		elif boulders != null:
+			winner_slot = boulders.leader()
+		else:
+			winner_slot = -1
 		_finish()
 
 

@@ -28,13 +28,19 @@ signal goal_scored(slot: int, lives_left: int, at: Vector3)
 
 var ice_ring: IceBlockRing = null
 var tile_grid: TileGrid = null
-var pucks = null # always null: bots probe sim.pucks, clients render from extra
+# Always null on clients: bots probe these on the server sim; clients render
+# the corresponding state from snapshot extra data instead.
+var pucks = null
+var boulders = null
+var race = null
 
 var _balls := {} # id -> {node, dir} — client-side flight matching the sim's path
 var _puck_nodes: Array[Node3D] = []      # rebuilt to match each snapshot
 var _puck_vels: Array[Vector3] = []      # dead-reckoning between snapshots
-var _lives: Array[int] = []              # Puck Panic lives, from events
+var _lives: Array[int] = []              # Puck Panic / Boulder Brawl, from events
 var _arc_markers: Array = []
+var _boulder_nodes: Array[Node3D] = []   # Boulder Brawl visuals
+var _race_progress: Array[float] = []    # Floe Dash progress from snapshots
 
 var _snaps: Array[Dictionary] = []   # {tick, data}, ascending tick
 var _render_tick := -1.0
@@ -63,6 +69,13 @@ func start(player_count: int) -> void:
 		_arc_markers = PuckManager.build_arc_markers(self, arena_radius, player_count)
 		for i in player_count:
 			_lives.append(PuckManager.START_LIVES)
+	elif MatchConfig.minigame == MatchConfig.Minigame.BOULDER:
+		for i in player_count:
+			_lives.append(BoulderManager.HP_START)
+	elif MatchConfig.minigame == MatchConfig.Minigame.RACE:
+		RaceManager.build_track_markers(self, arena_radius)
+		for i in player_count:
+			_race_progress.append(0.0)
 	for i in player_count:
 		var p: SimPlayer = MatchSim.PLAYER_SCENE.instantiate()
 		add_child(p)
@@ -125,9 +138,37 @@ func _on_goal_scored(slot: int, lives_left: int, at: Vector3) -> void:
 
 
 func player_lives(slot: int) -> int:
-	if MatchConfig.minigame != MatchConfig.Minigame.GOAL or slot >= _lives.size():
+	if slot >= _lives.size():
 		return -1
 	return _lives[slot]
+
+
+func player_progress(slot: int) -> float:
+	if slot >= _race_progress.size():
+		return -1.0
+	return _race_progress[slot]
+
+
+## Boulder payload: [state_code, x, z, vx, vz] per boulder.
+## state_code: -1 idle, -2 flying, -3 hidden, >=0 carried by that slot.
+func _apply_boulders(extra: PackedByteArray) -> void:
+	var floats := extra.to_float32_array()
+	var count := floats.size() / 5
+	while _boulder_nodes.size() < count:
+		var node := BoulderManager.make_boulder_visual()
+		add_child(node)
+		_boulder_nodes.append(node)
+	for i in count:
+		var code := floats[i * 5]
+		var node := _boulder_nodes[i]
+		node.visible = code > -2.5
+		if code >= 0.0 and int(code) < players.size():
+			# Carried: ride the carrier puppet so it tracks interpolation.
+			node.position = players[int(code)].global_position \
+				+ Vector3(0, BoulderManager.CARRY_HEIGHT, 0)
+		else:
+			node.position = Vector3(floats[i * 5 + 1],
+				0.45 if code > -1.5 else 0.85, floats[i * 5 + 2])
 
 
 func _on_ball_gone(id: int, at: Vector3) -> void:
@@ -179,6 +220,12 @@ func _on_snapshot(p_tick: int, p_state: int, p_time_left: float,
 		for slot in players.size():
 			if not players[slot].alive and slot < _arc_markers.size():
 				PuckManager.set_arc_neutral(_arc_markers, slot)
+	elif MatchConfig.minigame == MatchConfig.Minigame.BOULDER:
+		_apply_boulders(extra)
+	elif MatchConfig.minigame == MatchConfig.Minigame.RACE:
+		var floats := extra.to_float32_array()
+		for i in mini(floats.size(), _race_progress.size()):
+			_race_progress[i] = floats[i]
 	# Non-interpolated stats come straight from the newest snapshot.
 	for i in players.size():
 		var base := i * Net.PLAYER_STRIDE

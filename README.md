@@ -12,13 +12,17 @@ Original 3D arctic party game for Godot 4.4+, 2-8 players. Three minigames
 - **Puck Panic** — goal-defense: the rim is split into one colored goal arc
   per player, pucks ricochet off bodies, and a puck crossing YOUR arc costs a
   life (5 each). Dead players' arcs become walls. Falling in still kills you.
+- **Boulder Brawl** — snow boulders lie on the ice; walk into one to hoist it
+  (it slows you), charge hurls it. Hits cost one of five hearts and shove
+  hard. Missed throws stay where they slid; shattered ones respawn.
+- **Floe Dash** — 7 laps counterclockwise around the lane. Corner-cutting
+  earns nothing, shoving is legal, and falling in respawns you where you fell.
 
 Arena variants (ice blocks / melting / power-ups / chaos) and bot difficulty
 apply to every minigame.
 
-Roadmap toward a full party-game experience: more genres (melee/throwables,
-race), 3-4 stages per genre, an adventure mode with hub, tiered challenges
-(win → harder rule-twist rematches), 2v2 teams and handicap matches.
+Roadmap: 3-4 stages per minigame, 2v2 teams and handicap matches, client-side
+prediction, and polish (music, online names, character models).
 
 ## Milestone 5 — meta & polish
 

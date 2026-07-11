@@ -48,6 +48,13 @@ func get_player_input(player: SimPlayer, sim) -> PlayerInput:
 	# Puck Panic plays goalkeeper, not sumo.
 	if sim.pucks != null:
 		return _goal_guard_input(player, sim, prof)
+	# Floe Dash races the lane.
+	if sim.race != null:
+		return _race_input(player, sim, prof)
+	# Boulder Brawl: fetch ammo when empty-handed; the throw itself reuses the
+	# normal engagement logic below (ranged like Snow Brawl).
+	if sim.boulders != null and not sim.boulders.carrying(player.slot):
+		return _fetch_boulder_input(player, sim, prof)
 	var target := _pick_target(player, sim, prof)
 	if target == null:
 		return pi
@@ -96,7 +103,10 @@ func get_player_input(player: SimPlayer, sim) -> PlayerInput:
 	# Snow Brawl throws are ranged and cost no self-momentum, so the engagement
 	# distance stretches and the landing check always passes.
 	var ranged: bool = player.throw_mode
+	# Don't hurl the boulder from across the map — accuracy dies with distance.
 	var engage_range: float = 9.0 if ranged else float(prof["charge_range"])
+	if sim.boulders != null:
+		engage_range = 5.0
 	if dist < engage_range and player.recovery_left <= 0.0 \
 			and player.stamina >= player.stats.stamina_cost:
 		var travel: float = Tuning.CHARGE_SPEED * Tuning.CHARGE_DURATION * (1.0 + player.stats.momentum_keep)
@@ -118,8 +128,60 @@ func get_player_input(player: SimPlayer, sim) -> PlayerInput:
 		var phase: int = (sim.tick + player.slot * 53) % 90
 		var willing: bool = phase < window or finisher
 		if willing and (safe or finisher) and _kill_worthy(dir, target, sim):
-			pi.move = Vector2(dir.x, dir.z)
+			# Ranged throws inherit the difficulty aim-noise; melee dashes stay
+			# precise (the dash itself already gambles momentum).
+			var aim := dir
+			if ranged:
+				aim = dir.rotated(Vector3.UP,
+					sin(sim.tick * 0.11 + player.slot * 3.7) * float(prof["wobble"]) * 0.6)
+			pi.move = Vector2(aim.x, aim.z)
 			pi.charge = true
+	return pi
+
+
+## Boulder Brawl, empty-handed: run to the nearest idle boulder (dodging while
+## staggered still applies upstream via the normal fear handling — this path
+## only picks where to walk).
+func _fetch_boulder_input(player: SimPlayer, sim, prof: Dictionary) -> PlayerInput:
+	var pi := PlayerInput.new()
+	var best := Vector3.ZERO
+	var best_d := INF
+	for pos in sim.boulders.idle_positions():
+		var d: float = player.global_position.distance_squared_to(pos)
+		if d < best_d:
+			best_d = d
+			best = pos
+	if best_d == INF:
+		# Nothing to grab: circle the middle until a boulder respawns.
+		best = Vector3.ZERO
+	var to_t: Vector3 = best - player.global_position
+	to_t.y = 0.0
+	if to_t.length() > 0.2:
+		var desired: Vector3 = to_t.normalized().rotated(Vector3.UP,
+			sin(sim.tick * 0.03 + player.slot * 2.1) * float(prof["wobble"]) * 0.6)
+		pi.move = Vector2(desired.x, desired.z).limit_length(1.0)
+	return pi
+
+
+## Floe Dash: chase a point ~25 degrees ahead on the lane; dash for speed when
+## recovered and roughly facing along the track.
+func _race_input(player: SimPlayer, sim, prof: Dictionary) -> PlayerInput:
+	var pi := PlayerInput.new()
+	var pos: Vector3 = player.global_position
+	var a := atan2(pos.x, pos.z)
+	var ahead := a + 0.45
+	var lane_r: float = sim.arena_radius * RaceManager.LANE_FRACTION
+	var target := Vector3(sin(ahead), 0.0, cos(ahead)) * lane_r
+	var to_t: Vector3 = target - pos
+	to_t.y = 0.0
+	var dir := to_t.normalized()
+	var desired: Vector3 = dir.rotated(Vector3.UP,
+		sin(sim.tick * 0.05 + player.slot * 2.1) * float(prof["wobble"]) * 0.4)
+	pi.move = Vector2(desired.x, desired.z).limit_length(1.0)
+	# Dash along the lane for pace (and through anyone in the way).
+	if player.recovery_left <= 0.0 and player.stamina >= Tuning.STAMINA_MAX * 0.95 \
+			and player.facing.dot(dir) > 0.85:
+		pi.charge = true
 	return pi
 
 

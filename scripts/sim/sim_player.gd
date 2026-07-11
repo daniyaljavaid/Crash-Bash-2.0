@@ -7,7 +7,8 @@ extends CharacterBody3D
 signal landed_hit(victim: SimPlayer) # charge connected; presentation juice hook
 signal throw_requested(dir: Vector3) # Snow Brawl: charge button throws instead
 
-var throw_mode := false # Snow Brawl: charge input becomes a ranged throw
+var throw_mode := false # Snow Brawl/Boulder Brawl: charge input becomes a throw
+var carry_slow := false # Boulder Brawl: hauling a boulder slows you
 var slot := 0
 var stats := {}          # one entry of CharacterStats.ARCHETYPES
 var stamina := Tuning.STAMINA_MAX
@@ -115,8 +116,9 @@ func sim_tick(input: PlayerInput, dt: float) -> void:
 			else:
 				_start_charge(move3)
 		else:
-			velocity.x += move3.x * Tuning.MOVE_ACCEL * stats.accel_mult * dt
-			velocity.z += move3.z * Tuning.MOVE_ACCEL * stats.accel_mult * dt
+			var accel: float = Tuning.MOVE_ACCEL * stats.accel_mult * (0.75 if carry_slow else 1.0)
+			velocity.x += move3.x * accel * dt
+			velocity.z += move3.z * accel * dt
 			var damp := exp(-Tuning.FRICTION_K * dt)
 			velocity.x *= damp
 			velocity.z *= damp

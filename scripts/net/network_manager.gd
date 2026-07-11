@@ -415,6 +415,10 @@ func broadcast_snapshot(sim: MatchSim) -> void:
 		extra = sim.tile_grid.owners
 	elif sim.pucks != null:
 		extra = sim.pucks.encode_pucks()
+	elif sim.boulders != null:
+		extra = sim.boulders.encode()
+	elif sim.race != null:
+		extra = sim.race.encode()
 	_s2c_snapshot.rpc(sim.tick, sim.state, sim.time_left, sim.countdown_left,
 		sim.arena_radius, mask, data, extra)
 
