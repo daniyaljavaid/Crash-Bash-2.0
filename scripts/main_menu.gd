@@ -18,6 +18,8 @@ func _ready() -> void:
 	$Center/VBox/NetButtons/HostButton.pressed.connect(_on_host)
 	$Center/VBox/NetButtons/JoinButton.pressed.connect(_on_join)
 	$Center/VBox/QuitButton.pressed.connect(func() -> void: get_tree().quit())
+	_ip_edit.text = MatchConfig.last_ip
+	_port_edit.text = str(MatchConfig.last_port)
 	$Center/VBox/StartButton.grab_focus()
 
 
@@ -31,6 +33,8 @@ func _on_host() -> void:
 	if err != OK:
 		_error_label.text = "Could not host on port %d (in use?)" % _port()
 		return
+	MatchConfig.last_port = _port()
+	MatchConfig.save_settings()
 	MatchConfig.wins = []
 	get_tree().change_scene_to_file("res://scenes/lobby.tscn")
 
@@ -43,6 +47,9 @@ func _on_join() -> void:
 	if err != OK:
 		_error_label.text = "Invalid address: %s" % ip
 		return
+	MatchConfig.last_ip = ip
+	MatchConfig.last_port = _port()
+	MatchConfig.save_settings()
 	MatchConfig.wins = []
 	get_tree().change_scene_to_file("res://scenes/lobby.tscn")
 
@@ -66,6 +73,8 @@ func _bootstrap_dedicated_server() -> bool:
 			fill_bots = arg.get_slice("=", 1).to_int() != 0
 		elif arg.begins_with("autostart="):
 			Net.autostart_humans = arg.get_slice("=", 1).to_int()
+		elif arg.begins_with("autonext="):
+			Net.autonext_seconds = arg.get_slice("=", 1).to_int()
 	var err := Net.host(port, true)
 	if err != OK:
 		printerr("[server] failed to bind port %d" % port)

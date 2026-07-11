@@ -3,6 +3,54 @@
 Original 3D sumo party game for Godot 4.4+. Four-to-eight players on a slippery
 ice floe; shove everyone else into the water; last one standing wins.
 
+## Milestone 3 — WAN play & deployment
+
+### Export builds
+
+One-time setup: install export templates (Editor → *Editor* menu →
+*Manage Export Templates* → Download and Install; ~900 MB, matches your exact
+Godot version).
+
+Then, from the project folder:
+
+```sh
+mkdir -p build/windows build/macos build/server
+godot --headless --path . --export-release "Windows Desktop" build/windows/shove-kings.exe
+godot --headless --path . --export-release "macOS"           build/macos/shove-kings.zip
+godot --headless --path . --export-release "Linux Server"    build/server/shove-kings-server.x86_64
+```
+
+The three presets live in `export_presets.cfg`. "Linux Server" exports in
+dedicated-server mode (visual resources stripped) for a typical Linux VPS.
+macOS builds are ad-hoc signed — Gatekeeper will require right-click → Open on
+first launch (proper signing/notarization needs an Apple Developer identity).
+
+### Run a server over the internet
+
+```sh
+./shove-kings-server.x86_64 --headless --server -- port=9050 players=8 bots=1
+```
+
+Optional server args: `autostart=N` (start once N humans join — otherwise the
+first-joined client gets the Start button), `autonext=SECONDS` (auto-start the
+next round after each one ends).
+
+Clients: main menu → Join Game → the server's IP. Options:
+- **Tailscale (easiest):** install on server + players, join one tailnet, use
+  the server's `100.x.y.z` IP. No port forwarding, works through any NAT.
+- **Port forwarding:** forward UDP 9050 on the server's router; players use
+  the public IP. ENet is UDP — forward UDP, not TCP.
+- **LAN:** just use the machine's local IP.
+
+The last-used IP/port are remembered (`user://settings.cfg`, alongside the
+video settings).
+
+### Reconnect-safe lobby
+
+The lobby stays open while a match runs: anyone joining (or rejoining after a
+drop) waits in the lobby and is dealt into the next round automatically. Win
+standings follow players by peer identity across roster changes.
+
 ## Milestone 2 — online multiplayer (LAN/local)
 
 Server-authoritative over ENet: clients send input intents at 60 Hz, the server

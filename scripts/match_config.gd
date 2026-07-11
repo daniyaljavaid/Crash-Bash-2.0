@@ -14,15 +14,20 @@ const PLAYER_COLORS: Array[Color] = [
 ]
 const COLOR_NAMES := ["RED", "BLUE", "GREEN", "YELLOW", "PURPLE", "ORANGE", "CYAN", "PINK"]
 
+const SETTINGS_PATH := "user://settings.cfg"
+
 var player_count := 4
 var human_count := 1
 var wins: Array[int] = []
 
 var vsync_enabled := true
 var fps_cap := 0 # 0 = uncapped
+var last_ip := "127.0.0.1"
+var last_port := 9050
 
 
 func _ready() -> void:
+	_load_settings()
 	_parse_cmdline()
 	if wins.size() != player_count:
 		_reset_wins()
@@ -58,6 +63,26 @@ func apply_video_settings() -> void:
 	DisplayServer.window_set_vsync_mode(
 		DisplayServer.VSYNC_ENABLED if vsync_enabled else DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = fps_cap
+	save_settings()
+
+
+func save_settings() -> void:
+	var cf := ConfigFile.new()
+	cf.set_value("video", "vsync", vsync_enabled)
+	cf.set_value("video", "fps_cap", fps_cap)
+	cf.set_value("net", "last_ip", last_ip)
+	cf.set_value("net", "last_port", last_port)
+	cf.save(SETTINGS_PATH)
+
+
+func _load_settings() -> void:
+	var cf := ConfigFile.new()
+	if cf.load(SETTINGS_PATH) != OK:
+		return
+	vsync_enabled = cf.get_value("video", "vsync", true)
+	fps_cap = cf.get_value("video", "fps_cap", 0)
+	last_ip = cf.get_value("net", "last_ip", "127.0.0.1")
+	last_port = cf.get_value("net", "last_port", 9050)
 
 
 func _reset_wins() -> void:

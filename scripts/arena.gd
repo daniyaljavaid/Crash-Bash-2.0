@@ -37,7 +37,8 @@ func _ready() -> void:
 	_hud.next_round_requested.connect(_on_next_round_requested)
 	_hud.menu_requested.connect(_on_menu_requested)
 	if Net.is_online():
-		Net.arena_reload_requested.connect(func() -> void: get_tree().reload_current_scene())
+		# Next round arrives as a fresh match-start (roster may change), which
+		# reloads this scene via Net._apply_match_start.
 		Net.session_ended.connect(func(_reason: String) -> void:
 			get_tree().change_scene_to_file("res://scenes/main_menu.tscn"))
 	_maybe_schedule_screenshot()
@@ -91,7 +92,7 @@ func _on_round_ended(winner_slot: int) -> void:
 	MatchConfig.record_win(winner_slot)
 	if Net.is_server():
 		Net.broadcast_round_over(winner_slot, MatchConfig.wins)
-		Net.round_finished_on_server()
+		Net.round_finished_on_server(winner_slot)
 
 
 func _on_next_round_requested() -> void:

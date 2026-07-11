@@ -11,7 +11,6 @@ extends Node
 
 signal lobby_updated
 signal match_started
-signal arena_reload_requested
 signal snapshot_received(tick: int, state: int, time_left: float, countdown_left: float, data: PackedFloat32Array)
 signal net_eliminated(slot: int, at: Vector3)
 signal net_round_over(winner_slot: int, wins: Array)
@@ -30,13 +29,22 @@ var mode := Mode.OFFLINE
 var dedicated := false                 # SERVER with no local player
 var my_slot := -1                      # this machine's player slot in the match
 var slot_peers: Array[int] = []        # slot -> peer id (0 = bot, 1 = server/host)
-var lobby_peer_ids: Array[int] = []    # connected human peers, join order (server-side truth)
+var lobby_peer_ids: Array[int] = []    # human peers in the match roster, join order
+var waiting_peer_ids: Array[int] = []  # joined mid-round; merged into the roster next round
 var lobby_player_count := 4
 var lobby_fill_bots := true
-var autostart_humans := 0              # dedicated: auto-start once N humans joined (0 = off)
+var autostart_humans := 0              # auto-start once N humans joined (0 = off)
+var autonext_seconds := 0              # server: auto-start next round after N s (0 = manual)
+var current_port := DEFAULT_PORT
+var match_in_progress := false         # replicated to lobby clients ("joining next round")
 
 # server-side: peer id -> {move: Vector2, charge: bool, tick: int}
 var latest_inputs := {}
+
+# server-side wins that survive roster changes between rounds. Humans are keyed
+# by peer id, bots by "bot<slot>"; MatchConfig.wins (slot-indexed, what the HUD
+# shows) is rebuilt from this at every round start.
+var _wins_by_identity := {}
 
 var _round_active := false
 
@@ -67,7 +75,10 @@ func host(port: int, p_dedicated := false) -> Error:
 	multiplayer.multiplayer_peer = peer
 	mode = Mode.SERVER
 	dedicated = p_dedicated
+	current_port = port
 	lobby_peer_ids = []
+	waiting_peer_ids = []
+	_wins_by_identity = {}
 	if not dedicated:
 		lobby_peer_ids.append(1)
 	return OK
@@ -96,8 +107,11 @@ func _end_session(reason: String) -> void:
 	my_slot = -1
 	slot_peers = []
 	lobby_peer_ids = []
+	waiting_peer_ids = []
 	latest_inputs = {}
+	_wins_by_identity = {}
 	_round_active = false
+	match_in_progress = false
 	if reason != "":
 		session_ended.emit(reason)
 
@@ -107,10 +121,15 @@ func _end_session(reason: String) -> void:
 func _on_peer_connected(id: int) -> void:
 	if not is_server():
 		return
-	if _round_active or lobby_peer_ids.size() >= 8:
-		multiplayer.multiplayer_peer.disconnect_peer(id) # reconnect-safe lobby is M3
+	if lobby_peer_ids.size() + waiting_peer_ids.size() >= 8:
+		multiplayer.multiplayer_peer.disconnect_peer(id)
 		return
-	lobby_peer_ids.append(id)
+	if _round_active:
+		# Reconnect-safe lobby: joiners during a round wait it out and are
+		# merged into the roster when the next round is assembled.
+		waiting_peer_ids.append(id)
+	else:
+		lobby_peer_ids.append(id)
 	_broadcast_lobby()
 
 
@@ -118,9 +137,9 @@ func _on_peer_disconnected(id: int) -> void:
 	if not is_server():
 		return
 	lobby_peer_ids.erase(id)
+	waiting_peer_ids.erase(id)
 	latest_inputs.erase(id)
-	if not _round_active:
-		_broadcast_lobby()
+	_broadcast_lobby()
 	lobby_updated.emit()
 
 
@@ -136,7 +155,8 @@ func set_lobby_config(player_count: int, fill_bots: bool) -> void:
 
 func _broadcast_lobby() -> void:
 	if is_server():
-		_s2c_lobby_state.rpc(lobby_peer_ids, lobby_player_count, lobby_fill_bots)
+		_s2c_lobby_state.rpc(lobby_peer_ids, waiting_peer_ids,
+			lobby_player_count, lobby_fill_bots, _round_active)
 		lobby_updated.emit()
 		if autostart_humans > 0 and not _round_active \
 				and lobby_peer_ids.size() >= autostart_humans:
@@ -144,10 +164,13 @@ func _broadcast_lobby() -> void:
 
 
 @rpc("authority", "call_remote", "reliable")
-func _s2c_lobby_state(peer_ids: Array, player_count: int, fill_bots: bool) -> void:
+func _s2c_lobby_state(peer_ids: Array, waiting_ids: Array, player_count: int,
+		fill_bots: bool, in_progress: bool) -> void:
 	lobby_peer_ids.assign(peer_ids)
+	waiting_peer_ids.assign(waiting_ids)
 	lobby_player_count = player_count
 	lobby_fill_bots = fill_bots
+	match_in_progress = in_progress
 	lobby_updated.emit()
 
 
@@ -185,6 +208,10 @@ func _c2s_request_start() -> void:
 func _try_start(requester: int) -> void:
 	if requester != leader_peer() or _round_active:
 		return
+	# Late joiners waiting out the previous round enter the roster here.
+	for id in waiting_peer_ids:
+		lobby_peer_ids.append(id)
+	waiting_peer_ids = []
 	var humans := lobby_peer_ids.size()
 	var count := lobby_player_count
 	if not lobby_fill_bots:
@@ -196,26 +223,37 @@ func _try_start(requester: int) -> void:
 	slot_peers = []
 	for slot in count:
 		slot_peers.append(lobby_peer_ids[slot] if slot < humans else 0)
+	# Slot-indexed wins for the HUD, rebuilt from identity-keyed history so
+	# standings survive players joining/leaving between rounds.
+	var wins: Array[int] = []
+	for slot in count:
+		wins.append(_wins_by_identity.get(_slot_identity(slot), 0))
+	MatchConfig.wins = wins
 	_round_active = true
-	_s2c_match_start.rpc(slot_peers)
-	_apply_match_start(slot_peers)
+	match_in_progress = true
+	_s2c_match_start.rpc(slot_peers, wins)
+	_apply_match_start(slot_peers, wins)
+
+
+func _slot_identity(slot: int) -> String:
+	var peer: int = slot_peers[slot]
+	return "bot%d" % slot if peer == 0 else "peer%d" % peer
 
 
 @rpc("authority", "call_remote", "reliable")
-func _s2c_match_start(assignments: Array) -> void:
+func _s2c_match_start(assignments: Array, wins: Array) -> void:
 	_round_active = true
-	_apply_match_start(assignments)
+	_apply_match_start(assignments, wins)
 
 
-func _apply_match_start(assignments: Array) -> void:
+func _apply_match_start(assignments: Array, wins: Array) -> void:
 	slot_peers.assign(assignments)
 	my_slot = slot_peers.find(multiplayer.get_unique_id())
-	print("[net] match starting: slots=%s my_slot=%d" % [str(assignments), my_slot])
+	match_in_progress = true
+	print("[net] match starting: slots=%s my_slot=%d wins=%s" % [
+		str(assignments), my_slot, str(wins)])
 	MatchConfig.player_count = slot_peers.size()
-	if MatchConfig.wins.size() != slot_peers.size():
-		MatchConfig.wins = []
-		for i in slot_peers.size():
-			MatchConfig.wins.append(0)
+	MatchConfig.wins.assign(wins)
 	match_started.emit()
 	get_tree().change_scene_to_file("res://scenes/arena.tscn")
 
@@ -238,17 +276,22 @@ func _c2s_request_next_round() -> void:
 func _do_next_round(requester: int) -> void:
 	if requester != leader_peer():
 		return
-	_s2c_reload_arena.rpc()
-	arena_reload_requested.emit()
+	# A next round is a fresh match start: roster and slots are recomputed so
+	# late joiners get in and departed players drop out.
+	_try_start(requester)
 
 
-@rpc("authority", "call_remote", "reliable")
-func _s2c_reload_arena() -> void:
-	arena_reload_requested.emit()
-
-
-func round_finished_on_server() -> void:
-	_round_active = false # lobby stays as-is; leader can trigger the next round
+## Server-side, called by the arena when the round resolves. Records the win
+## against a roster-stable identity and re-opens the lobby for late joiners.
+func round_finished_on_server(winner_slot: int) -> void:
+	if winner_slot >= 0:
+		var key := _slot_identity(winner_slot)
+		_wins_by_identity[key] = _wins_by_identity.get(key, 0) + 1
+	_round_active = false
+	_broadcast_lobby() # waiting clients learn the round ended
+	if autonext_seconds > 0:
+		get_tree().create_timer(autonext_seconds).timeout.connect(
+			func() -> void: _do_next_round(leader_peer()))
 
 
 # --- gameplay: input up ------------------------------------------------------

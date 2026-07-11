@@ -30,10 +30,13 @@ func _push_config() -> void:
 
 
 func _refresh() -> void:
-	if Net.is_server():
-		_status.text = "Hosting on port — waiting for players (%d connected)" \
-			% Net.humans_connected()
-	elif Net.lobby_peer_ids.is_empty():
+	var me := multiplayer.get_unique_id()
+	if Net.waiting_peer_ids.has(me):
+		_status.text = "Match in progress — you will join the next round"
+	elif Net.is_server():
+		_status.text = "Hosting on port %d — %d player(s) connected" \
+			% [Net.current_port, Net.humans_connected()]
+	elif Net.lobby_peer_ids.is_empty() and Net.waiting_peer_ids.is_empty():
 		_status.text = "Connecting..."
 	else:
 		_status.text = "Connected (%d players in lobby)" % Net.humans_connected()
@@ -44,11 +47,19 @@ func _refresh() -> void:
 		var peer: int = Net.lobby_peer_ids[i]
 		var row := Label.new()
 		var name_text := "Host" if peer == 1 else "Player (peer %d)" % peer
-		if peer == multiplayer.get_unique_id():
+		if peer == me:
 			name_text += "  — you"
 		if peer == Net.leader_peer():
 			name_text += "  [leader]"
 		row.text = "%d. %s" % [i + 1, name_text]
+		row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_player_list.add_child(row)
+	for peer in Net.waiting_peer_ids:
+		var row := Label.new()
+		row.text = "Player (peer %d) — waiting for next round" % peer
+		if peer == me:
+			row.text = "You — waiting for next round"
+		row.modulate = Color(1, 1, 1, 0.6)
 		row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_player_list.add_child(row)
 

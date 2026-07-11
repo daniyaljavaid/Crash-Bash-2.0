@@ -1,5 +1,8 @@
 # Godot 4 cache/imported assets
 .godot/
 
+# Export output
+build/
+
 # macOS
 .DS_Store
