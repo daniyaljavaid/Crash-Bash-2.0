@@ -24,11 +24,17 @@ signal block_destroyed(index: int, at: Vector3)
 signal player_respawned(slot: int, at: Vector3)
 signal ball_spawned(id: int, from: Vector3, dir: Vector3)
 signal ball_gone(id: int, at: Vector3)
+signal goal_scored(slot: int, lives_left: int, at: Vector3)
 
 var ice_ring: IceBlockRing = null
 var tile_grid: TileGrid = null
+var pucks = null # always null: bots probe sim.pucks, clients render from extra
 
 var _balls := {} # id -> {node, dir} — client-side flight matching the sim's path
+var _puck_nodes: Array[Node3D] = []      # rebuilt to match each snapshot
+var _puck_vels: Array[Vector3] = []      # dead-reckoning between snapshots
+var _lives: Array[int] = []              # Puck Panic lives, from events
+var _arc_markers: Array = []
 
 var _snaps: Array[Dictionary] = []   # {tick, data}, ascending tick
 var _render_tick := -1.0
@@ -53,6 +59,10 @@ func start(player_count: int) -> void:
 		tile_grid = TileGrid.new()
 		add_child(tile_grid)
 		tile_grid.build(arena_radius, player_count)
+	elif MatchConfig.minigame == MatchConfig.Minigame.GOAL:
+		_arc_markers = PuckManager.build_arc_markers(self, arena_radius, player_count)
+		for i in player_count:
+			_lives.append(PuckManager.START_LIVES)
 	for i in player_count:
 		var p: SimPlayer = MatchSim.PLAYER_SCENE.instantiate()
 		add_child(p)
@@ -72,6 +82,7 @@ func start(player_count: int) -> void:
 	Net.net_player_respawned.connect(_on_respawned)
 	Net.net_ball_spawned.connect(_on_ball_spawned)
 	Net.net_ball_gone.connect(_on_ball_gone)
+	Net.net_goal_scored.connect(_on_goal_scored)
 
 
 func _exit_tree() -> void:
@@ -85,6 +96,7 @@ func _exit_tree() -> void:
 		Net.net_player_respawned.disconnect(_on_respawned)
 		Net.net_ball_spawned.disconnect(_on_ball_spawned)
 		Net.net_ball_gone.disconnect(_on_ball_gone)
+		Net.net_goal_scored.disconnect(_on_goal_scored)
 
 
 func _on_player_hit(attacker_slot: int, victim_slot: int, at: Vector3) -> void:
@@ -96,11 +108,26 @@ func _on_respawned(slot: int, at: Vector3) -> void:
 
 
 func _on_ball_spawned(id: int, from: Vector3, dir: Vector3) -> void:
-	var node := SnowballManager.make_ball_visual()
-	node.position = from
-	add_child(node)
-	_balls[id] = {"node": node, "dir": dir}
+	# Puck Panic pucks render from snapshot data, not this event (their paths
+	# bounce unpredictably); the event still fires the arena launch sound.
+	if MatchConfig.minigame != MatchConfig.Minigame.GOAL:
+		var node := SnowballManager.make_ball_visual()
+		node.position = from
+		add_child(node)
+		_balls[id] = {"node": node, "dir": dir}
 	ball_spawned.emit(id, from, dir)
+
+
+func _on_goal_scored(slot: int, lives_left: int, at: Vector3) -> void:
+	if slot < _lives.size():
+		_lives[slot] = lives_left
+	goal_scored.emit(slot, lives_left, at)
+
+
+func player_lives(slot: int) -> int:
+	if MatchConfig.minigame != MatchConfig.Minigame.GOAL or slot >= _lives.size():
+		return -1
+	return _lives[slot]
 
 
 func _on_ball_gone(id: int, at: Vector3) -> void:
@@ -147,6 +174,11 @@ func _on_snapshot(p_tick: int, p_state: int, p_time_left: float,
 		ice_ring.apply_mask(p_block_mask)
 	if tile_grid != null:
 		tile_grid.apply_owners(extra)
+	if MatchConfig.minigame == MatchConfig.Minigame.GOAL:
+		_apply_pucks(extra)
+		for slot in players.size():
+			if not players[slot].alive and slot < _arc_markers.size():
+				PuckManager.set_arc_neutral(_arc_markers, slot)
 	# Non-interpolated stats come straight from the newest snapshot.
 	for i in players.size():
 		var base := i * Net.PLAYER_STRIDE
@@ -181,12 +213,32 @@ func _on_round_over(winner_slot: int, _wins: Array) -> void:
 	round_ended.emit(winner_slot)
 
 
+## Rebuild the puck node pool to match the snapshot: [x, z, vx, vz] per puck.
+func _apply_pucks(extra: PackedByteArray) -> void:
+	var floats := extra.to_float32_array()
+	var count := floats.size() / 4
+	while _puck_nodes.size() < count:
+		var node := PuckManager.make_puck_visual()
+		add_child(node)
+		_puck_nodes.append(node)
+		_puck_vels.append(Vector3.ZERO)
+	while _puck_nodes.size() > count:
+		_puck_nodes.pop_back().queue_free()
+		_puck_vels.pop_back()
+	for i in count:
+		_puck_nodes[i].position = Vector3(floats[i * 4], 0.25, floats[i * 4 + 1])
+		_puck_vels[i] = Vector3(floats[i * 4 + 2], 0.0, floats[i * 4 + 3])
+
+
 func _process(delta: float) -> void:
 	# Snowballs fly deterministic straight lines; the client animates them
 	# locally from the spawn event and removes them on the gone event.
 	for id in _balls:
 		var b: Dictionary = _balls[id]
 		b["node"].position += b["dir"] * SnowballManager.SPEED * delta
+	# Pucks dead-reckon along their last known velocity between snapshots.
+	for i in _puck_nodes.size():
+		_puck_nodes[i].position += _puck_vels[i] * delta
 	if _snaps.size() < 2:
 		return
 	var newest: float = _snaps[-1]["tick"]

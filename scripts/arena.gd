@@ -45,6 +45,7 @@ func _ready() -> void:
 	_view.player_respawned.connect(_on_player_respawned)
 	_view.ball_spawned.connect(_on_ball_spawned)
 	_view.ball_gone.connect(_on_ball_gone)
+	_view.goal_scored.connect(_on_goal_scored)
 	if Net.mode != Net.Mode.CLIENT and _sim.power_ups != null:
 		_sim.powerup_spawned.connect(func(id: int, type: int, at: Vector3) -> void:
 			if Net.is_server():
@@ -158,6 +159,14 @@ func _on_ball_spawned(id: int, from: Vector3, dir: Vector3) -> void:
 func _on_ball_gone(id: int, at: Vector3) -> void:
 	if Net.is_server():
 		Net.broadcast_ball_gone(id, at)
+
+
+func _on_goal_scored(slot: int, lives_left: int, at: Vector3) -> void:
+	if Net.is_server():
+		Net.broadcast_goal_scored(slot, lives_left, at)
+	SoundBank.play("hit", -6.0)
+	_camera_rig.add_shake(0.3)
+	_spawn_splash(at + Vector3(0, 0.4, 0), MatchConfig.PLAYER_COLORS[slot])
 
 
 ## Brief global slow-mo on a landed hit. Offline only: online the server's

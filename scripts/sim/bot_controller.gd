@@ -45,6 +45,9 @@ var _fear_until_tick := 0
 func get_player_input(player: SimPlayer, sim) -> PlayerInput:
 	var prof: Dictionary = PROFILES[MatchConfig.difficulty]
 	var pi := PlayerInput.new()
+	# Puck Panic plays goalkeeper, not sumo.
+	if sim.pucks != null:
+		return _goal_guard_input(player, sim, prof)
 	var target := _pick_target(player, sim, prof)
 	if target == null:
 		return pi
@@ -116,6 +119,51 @@ func get_player_input(player: SimPlayer, sim) -> PlayerInput:
 		var willing: bool = phase < window or finisher
 		if willing and (safe or finisher) and _kill_worthy(dir, target, sim):
 			pi.move = Vector2(dir.x, dir.z)
+			pi.charge = true
+	return pi
+
+
+## Puck Panic: hold position in front of my goal arc; intercept the puck with
+## the soonest rim-crossing inside my arc, dashing when it's urgent and far.
+func _goal_guard_input(player: SimPlayer, sim, prof: Dictionary) -> PlayerInput:
+	var pi := PlayerInput.new()
+	var n: int = sim.players.size()
+	var my_angle := TAU * float(player.slot) / float(n)
+	var target_pos: Vector3 = Vector3(sin(my_angle), 0, cos(my_angle)) * sim.arena_radius * 0.72
+	var best_eta := INF
+	for puck in sim.pucks.puck_list():
+		var pos: Vector3 = puck["pos"]
+		var vel: Vector3 = puck["vel"]
+		pos.y = 0.0
+		vel.y = 0.0
+		if vel.length_squared() < 0.01:
+			continue
+		# Solve |pos + vel*t| = R for the rim-crossing time.
+		var rim: float = sim.arena_radius - 0.6
+		var a := vel.dot(vel)
+		var b := 2.0 * pos.dot(vel)
+		var c := pos.dot(pos) - rim * rim
+		var disc := b * b - 4.0 * a * c
+		if disc <= 0.0:
+			continue
+		var t := (-b + sqrt(disc)) / (2.0 * a)
+		if t < 0.0 or t >= best_eta:
+			continue
+		var hit := pos + vel * t
+		if PuckManager.arc_slot_at(atan2(hit.x, hit.z), n) != player.slot:
+			continue
+		best_eta = t
+		target_pos = hit * 0.9
+	var to_t: Vector3 = target_pos - player.global_position
+	to_t.y = 0.0
+	if to_t.length() > 0.3:
+		var desired: Vector3 = to_t.normalized().rotated(Vector3.UP,
+			sin(sim.tick * 0.03 + player.slot * 2.1) * float(prof["wobble"]) * 0.5)
+		pi.move = Vector2(desired.x, desired.z).limit_length(1.0)
+		# Dash to make an urgent distant save.
+		if best_eta < 1.2 and to_t.length() > 3.0 \
+				and player.recovery_left <= 0.0 \
+				and player.stamina >= player.stats.stamina_cost:
 			pi.charge = true
 	return pi
 

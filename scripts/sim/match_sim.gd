@@ -13,6 +13,7 @@ signal player_hit(attacker_slot: int, victim_slot: int, at: Vector3)
 signal player_respawned(slot: int, at: Vector3)                 # Tile Rush
 signal ball_spawned(id: int, from: Vector3, dir: Vector3)       # Snow Brawl
 signal ball_gone(id: int, at: Vector3)
+signal goal_scored(slot: int, lives_left: int, at: Vector3)     # Puck Panic
 
 enum State { COUNTDOWN, PLAYING, OVER }
 
@@ -30,6 +31,7 @@ var ice_ring: IceBlockRing = null
 var power_ups: PowerUpManager = null
 var tile_grid: TileGrid = null
 var snowballs: SnowballManager = null
+var pucks: PuckManager = null
 var minigame := MatchConfig.Minigame.SHOVE
 
 var _started := false
@@ -80,10 +82,29 @@ func start_match(player_count: int, human_count: int,
 		snowballs.ball_hit.connect(
 			func(attacker: int, victim: int, at: Vector3) -> void: player_hit.emit(attacker, victim, at))
 	_spawn_players(player_count, human_count, controllers_override)
+	if minigame == MatchConfig.Minigame.GOAL:
+		pucks = PuckManager.new()
+		add_child(pucks)
+		pucks.setup(self)
+		pucks.puck_spawned.connect(
+			func(id: int, at: Vector3) -> void: ball_spawned.emit(id, at, Vector3.ZERO))
+		pucks.puck_gone.connect(
+			func(id: int, at: Vector3) -> void: ball_gone.emit(id, at))
+		pucks.goal_scored.connect(_on_goal_scored)
 	time_left = Tuning.ROUND_TIME
 	countdown_left = Tuning.COUNTDOWN_TIME
 	state = State.COUNTDOWN
 	_started = true
+
+
+func _on_goal_scored(slot: int, lives_left: int, at: Vector3) -> void:
+	goal_scored.emit(slot, lives_left, at)
+	if lives_left <= 0 and players[slot].alive:
+		players[slot].eliminate()
+		print("[sim] t=%.1fs slot %d (%s) out of lives, %d alive" % [
+			Tuning.ROUND_TIME - time_left, slot,
+			MatchConfig.COLOR_NAMES[slot], alive_count()])
+		player_eliminated.emit(slot, players[slot].global_position)
 
 
 func _physics_process(delta: float) -> void:
@@ -103,6 +124,8 @@ func _physics_process(delta: float) -> void:
 				power_ups.tick()
 			if snowballs != null:
 				snowballs.tick(delta)
+			if pucks != null:
+				pucks.tick(delta)
 			for i in players.size():
 				var p := players[i]
 				if p.alive:
@@ -112,6 +135,11 @@ func _physics_process(delta: float) -> void:
 			_check_round_end()
 		State.OVER:
 			pass
+
+
+## Puck Panic lives for the HUD; -1 in other modes (ClientReplica mirrors this).
+func player_lives(slot: int) -> int:
+	return pucks.lives[slot] if pucks != null else -1
 
 
 func alive_count() -> int:
@@ -276,7 +304,8 @@ func _check_round_end() -> void:
 		winner_slot = last_alive.slot if n == 1 else -1
 		_finish()
 	elif time_left <= 0.0:
-		winner_slot = -1 # TIE: 2+ players survived the clock
+		# Puck Panic resolves the clock by remaining lives; sumo modes tie.
+		winner_slot = pucks.leader() if pucks != null else -1
 		_finish()
 
 

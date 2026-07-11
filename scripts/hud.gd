@@ -61,6 +61,10 @@ func _process(delta: float) -> void:
 		_cells[i]["bar"].value = _sim.players[i].stamina
 		if _sim.tile_grid != null:
 			_cells[i]["count"].text = "%d tiles" % _sim.tile_grid.counts[i]
+		elif MatchConfig.minigame == MatchConfig.Minigame.GOAL:
+			var l: int = _sim.player_lives(i)
+			if l >= 0:
+				_cells[i]["count"].text = "%d ♥" % l
 
 
 func _build_strip() -> void:
@@ -81,10 +85,11 @@ func _build_strip() -> void:
 		cell.add_child(swatch)
 		cell.add_child(bar)
 		cell.add_child(label)
-		var count := Label.new() # tile count, Tile Rush only
+		var count := Label.new() # tile count (Tile Rush) / lives (Puck Panic)
 		count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		count.add_theme_font_size_override("font_size", 14)
-		count.visible = MatchConfig.minigame == MatchConfig.Minigame.TILE
+		count.visible = MatchConfig.minigame == MatchConfig.Minigame.TILE \
+			or MatchConfig.minigame == MatchConfig.Minigame.GOAL
 		cell.add_child(count)
 		_strip.add_child(cell)
 		_cells.append({"root": cell, "bar": bar, "label": label, "count": count})

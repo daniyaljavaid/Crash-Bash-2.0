@@ -19,6 +19,7 @@ signal net_player_hit(attacker_slot: int, victim_slot: int, at: Vector3)
 signal net_player_respawned(slot: int, at: Vector3)
 signal net_ball_spawned(id: int, from: Vector3, dir: Vector3)
 signal net_ball_gone(id: int, at: Vector3)
+signal net_goal_scored(slot: int, lives_left: int, at: Vector3)
 signal net_powerup_spawned(id: int, type: int, at: Vector3)
 signal net_powerup_collected(id: int, type: int, slot: int)
 signal session_ended(reason: String)
@@ -407,10 +408,13 @@ func broadcast_snapshot(sim: MatchSim) -> void:
 		data[base + 5] = float(flags)
 		data[base + 6] = p.visual_scale
 	var mask: int = sim.ice_ring.alive_mask if sim.ice_ring != null else 0
-	# `extra` carries mode-specific state: tile ownership bytes in Tile Rush.
+	# `extra` carries mode-specific state: tile ownership bytes in Tile Rush,
+	# puck positions/velocities in Puck Panic.
 	var extra := PackedByteArray()
 	if sim.tile_grid != null:
 		extra = sim.tile_grid.owners
+	elif sim.pucks != null:
+		extra = sim.pucks.encode_pucks()
 	_s2c_snapshot.rpc(sim.tick, sim.state, sim.time_left, sim.countdown_left,
 		sim.arena_radius, mask, data, extra)
 
@@ -460,6 +464,15 @@ func _s2c_ball_spawned(id: int, from: Vector3, dir: Vector3) -> void:
 
 func broadcast_ball_gone(id: int, at: Vector3) -> void:
 	_s2c_ball_gone.rpc(id, at)
+
+
+func broadcast_goal_scored(slot: int, lives_left: int, at: Vector3) -> void:
+	_s2c_goal_scored.rpc(slot, lives_left, at)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _s2c_goal_scored(slot: int, lives_left: int, at: Vector3) -> void:
+	net_goal_scored.emit(slot, lives_left, at)
 
 
 @rpc("authority", "call_remote", "reliable")

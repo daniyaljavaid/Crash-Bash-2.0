@@ -9,10 +9,16 @@ Original 3D arctic party game for Godot 4.4+, 2-8 players. Three minigames
   shove rivals off their turf; falling only respawns you. Most tiles at 0:00.
 - **Snow Brawl** — the charge button throws snowballs instead of dashing;
   ranged knockback, same deadly edges, last penguin standing.
+- **Puck Panic** — goal-defense: the rim is split into one colored goal arc
+  per player, pucks ricochet off bodies, and a puck crossing YOUR arc costs a
+  life (5 each). Dead players' arcs become walls. Falling in still kills you.
 
 Arena variants (ice blocks / melting / power-ups / chaos) and bot difficulty
-apply to every minigame. More minigame genres (goal-defense, race) planned;
-per-game stages come later.
+apply to every minigame.
+
+Roadmap toward a full party-game experience: more genres (melee/throwables,
+race), 3-4 stages per genre, an adventure mode with hub, tiered challenges
+(win → harder rule-twist rematches), 2v2 teams and handicap matches.
 
 ## Milestone 5 — meta & polish
 

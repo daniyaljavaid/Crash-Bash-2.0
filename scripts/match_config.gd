@@ -22,8 +22,8 @@ const VARIANT_NAMES := ["Classic", "Ice Blocks", "Melting Platform", "Power-Ups"
 enum Difficulty { EASY, MEDIUM, HARD, EXPERT }
 const DIFFICULTY_NAMES := ["Easy", "Medium", "Hard", "Expert"]
 
-enum Minigame { SHOVE, TILE, SNOW }
-const MINIGAME_NAMES := ["Shove Out", "Tile Rush", "Snow Brawl"]
+enum Minigame { SHOVE, TILE, SNOW, GOAL }
+const MINIGAME_NAMES := ["Shove Out", "Tile Rush", "Snow Brawl", "Puck Panic"]
 
 var player_count := 4
 var human_count := 1
