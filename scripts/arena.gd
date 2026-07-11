@@ -32,6 +32,10 @@ func _ready() -> void:
 			replica.start(Net.slot_peers.size())
 			_view = replica
 			_client_input_source = _make_client_input_source()
+	if DisplayServer.get_name() != "headless":
+		var scenery := Scenery.new()
+		add_child(scenery)
+		scenery.build(_view.arena_radius)
 	_camera_rig.setup(_view)
 	_hud.bind_sim(_view)
 	_view.player_eliminated.connect(_on_player_eliminated)
