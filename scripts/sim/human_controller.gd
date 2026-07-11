@@ -16,7 +16,7 @@ func _init(p_scheme: Scheme, p_device := 0) -> void:
 	device = p_device
 
 
-func get_player_input(_player: SimPlayer, _sim: MatchSim) -> PlayerInput:
+func get_player_input(_player: SimPlayer, _sim) -> PlayerInput:
 	var pi := PlayerInput.new()
 	match scheme:
 		Scheme.KEYBOARD_WASD:

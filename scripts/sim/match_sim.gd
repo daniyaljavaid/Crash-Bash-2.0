@@ -23,12 +23,15 @@ var winner_slot := -1
 var _started := false
 
 
-func start_match(player_count: int, human_count: int) -> void:
-	arena_radius = Tuning.ARENA_RADIUS_SMALL \
-		+ maxf(0.0, player_count - 4) * Tuning.ARENA_RADIUS_PER_EXTRA_PLAYER
-	_build_platform()
+## controllers_override lets the network layer supply per-slot controllers
+## (host input, remote peers, bots) without the sim knowing about networking.
+## Empty = M1 behavior (local humans by scheme, bots for the rest).
+func start_match(player_count: int, human_count: int,
+		controllers_override: Array[PlayerController] = []) -> void:
+	arena_radius = radius_for_player_count(player_count)
+	add_child(build_platform(arena_radius))
 	_build_kill_zone()
-	_spawn_players(player_count, human_count)
+	_spawn_players(player_count, human_count, controllers_override)
 	time_left = Tuning.ROUND_TIME
 	countdown_left = Tuning.COUNTDOWN_TIME
 	state = State.COUNTDOWN
@@ -63,7 +66,8 @@ func alive_count() -> int:
 	return n
 
 
-func _spawn_players(player_count: int, human_count: int) -> void:
+func _spawn_players(player_count: int, human_count: int,
+		controllers_override: Array[PlayerController]) -> void:
 	for i in player_count:
 		var p: SimPlayer = PLAYER_SCENE.instantiate()
 		add_child(p)
@@ -76,7 +80,10 @@ func _spawn_players(player_count: int, human_count: int) -> void:
 		# Teleport: clear interpolation history so there is no first-frame streak.
 		p.reset_physics_interpolation()
 		players.append(p)
-		controllers.append(_make_controller(i, human_count))
+		if controllers_override.size() > i:
+			controllers.append(controllers_override[i])
+		else:
+			controllers.append(_make_controller(i, human_count))
 
 
 func _make_controller(slot: int, human_count: int) -> PlayerController:
@@ -88,7 +95,15 @@ func _make_controller(slot: int, human_count: int) -> PlayerController:
 		_: return HumanController.new(HumanController.Scheme.GAMEPAD, slot - 2)
 
 
-func _build_platform() -> void:
+## Radius scales with head count; shared with the client replica so both sides
+## build identical arenas from the same player count.
+static func radius_for_player_count(player_count: int) -> float:
+	return Tuning.ARENA_RADIUS_SMALL \
+		+ maxf(0.0, player_count - 4) * Tuning.ARENA_RADIUS_PER_EXTRA_PLAYER
+
+
+## Also used by ClientReplica for the visual copy of the arena.
+static func build_platform(radius: float) -> StaticBody3D:
 	var platform := StaticBody3D.new()
 	platform.name = "Platform"
 	platform.collision_layer = 1
@@ -96,7 +111,7 @@ func _build_platform() -> void:
 
 	var shape := CollisionShape3D.new()
 	var cyl := CylinderShape3D.new()
-	cyl.radius = arena_radius
+	cyl.radius = radius
 	cyl.height = 2.0
 	shape.shape = cyl
 	shape.position = Vector3(0, -1.0, 0)
@@ -104,8 +119,8 @@ func _build_platform() -> void:
 
 	var mesh_i := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
-	cm.top_radius = arena_radius
-	cm.bottom_radius = arena_radius + 0.35 # slight bevel
+	cm.top_radius = radius
+	cm.bottom_radius = radius + 0.35 # slight bevel
 	cm.height = 2.0
 	cm.radial_segments = 48
 	mesh_i.mesh = cm
@@ -115,8 +130,7 @@ func _build_platform() -> void:
 	mat.roughness = 0.15
 	mesh_i.material_override = mat
 	platform.add_child(mesh_i)
-
-	add_child(platform)
+	return platform
 
 
 func _build_kill_zone() -> void:

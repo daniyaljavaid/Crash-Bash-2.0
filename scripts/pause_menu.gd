@@ -29,7 +29,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _toggle() -> void:
 	visible = not visible
-	get_tree().paused = visible
+	# Online, the server keeps simulating for everyone — never pause the tree.
+	if not Net.is_online():
+		get_tree().paused = visible
 
 
 func _on_vsync_toggled(pressed: bool) -> void:
@@ -44,4 +46,6 @@ func _on_fps_selected(index: int) -> void:
 
 func _on_quit_to_menu() -> void:
 	get_tree().paused = false
+	if Net.is_online():
+		Net.leave()
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")

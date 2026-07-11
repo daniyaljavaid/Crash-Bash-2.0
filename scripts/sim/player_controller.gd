@@ -6,5 +6,7 @@ extends RefCounted
 ## controllers for "network controllers" fed by client RPCs.
 
 
-func get_player_input(_player: SimPlayer, _sim: MatchSim) -> PlayerInput:
+# `sim` is duck-typed (MatchSim on the server, ClientReplica for client-side
+# autopilot) — both expose players/arena_radius/tick/time_left.
+func get_player_input(_player: SimPlayer, _sim) -> PlayerInput:
 	return PlayerInput.new()

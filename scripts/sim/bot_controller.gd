@@ -13,7 +13,7 @@ const FEAR_TICKS := 30           # 0.5 s: after being hit, flee instead of re-en
 var _fear_until_tick := 0
 
 
-func get_player_input(player: SimPlayer, sim: MatchSim) -> PlayerInput:
+func get_player_input(player: SimPlayer, sim) -> PlayerInput:
 	var pi := PlayerInput.new()
 	var target := _nearest_opponent(player, sim)
 	if target == null:
@@ -64,20 +64,20 @@ func get_player_input(player: SimPlayer, sim: MatchSim) -> PlayerInput:
 		var travel: float = Tuning.CHARGE_SPEED * Tuning.CHARGE_DURATION * (1.0 + player.stats.momentum_keep)
 		var landing: Vector3 = player.global_position + dir * travel
 		landing.y = 0.0
-		var safe := landing.length() < sim.arena_radius - 0.3
+		var safe: bool = landing.length() < sim.arena_radius - 0.3
 		# Finisher: victim hugging the edge and the shove points squarely off
 		# the platform — take the shot even if the follow-through is risky.
-		var finisher := _target_radius(target) > sim.arena_radius * 0.72 \
+		var finisher: bool = _target_radius(target) > sim.arena_radius * 0.72 \
 			and dir.dot(_target_flat(target).normalized()) > 0.5
 		# Aggression throttle: outside finishers, each bot is only "willing" to
 		# charge during a periodic window (phase-shifted per slot) so 8 bots
 		# don't resolve the round in seconds. The window widens as the round
 		# clock runs down, so late-game bots turn relentless and rounds resolve
 		# instead of stalling to the timer.
-		var elapsed_frac := (Tuning.ROUND_TIME - sim.time_left) / Tuning.ROUND_TIME
+		var elapsed_frac: float = (Tuning.ROUND_TIME - sim.time_left) / Tuning.ROUND_TIME
 		var window := 8 + int(62.0 * elapsed_frac)
-		var phase := (sim.tick + player.slot * 53) % 90
-		var willing := phase < window or finisher
+		var phase: int = (sim.tick + player.slot * 53) % 90
+		var willing: bool = phase < window or finisher
 		if willing and (safe or finisher) and _kill_worthy(dir, target, sim):
 			pi.move = Vector2(dir.x, dir.z)
 			pi.charge = true
@@ -96,7 +96,7 @@ func _target_radius(target: SimPlayer) -> float:
 
 ## Don't waste charges ping-ponging victims around the middle: when the victim
 ## is in the outer half, only charge if the shove points them off the platform.
-func _kill_worthy(dir: Vector3, target: SimPlayer, sim: MatchSim) -> bool:
+func _kill_worthy(dir: Vector3, target: SimPlayer, sim) -> bool:
 	var target_flat: Vector3 = target.global_position
 	target_flat.y = 0.0
 	if target_flat.length() < sim.arena_radius * 0.5:
@@ -104,7 +104,7 @@ func _kill_worthy(dir: Vector3, target: SimPlayer, sim: MatchSim) -> bool:
 	return dir.dot(target_flat.normalized()) > OUTWARD_DOT_MIN
 
 
-func _nearest_opponent(player: SimPlayer, sim: MatchSim) -> SimPlayer:
+func _nearest_opponent(player: SimPlayer, sim) -> SimPlayer:
 	var best: SimPlayer = null
 	var best_d := INF
 	for p in sim.players:

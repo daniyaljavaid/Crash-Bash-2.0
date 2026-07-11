@@ -3,6 +3,34 @@
 Original 3D sumo party game for Godot 4.4+. Four-to-eight players on a slippery
 ice floe; shove everyone else into the water; last one standing wins.
 
+## Milestone 2 — online multiplayer (LAN/local)
+
+Server-authoritative over ENet: clients send input intents at 60 Hz, the server
+runs the only simulation and broadcasts 20 Hz snapshots; clients interpolate
+puppets ~100 ms behind (`scripts/net/`).
+
+**Host + join on one machine:** launch two instances → one clicks *Host Game*
+(port 9050), the other *Join Game* with `127.0.0.1`. Host configures match size
+/ bots in the lobby and starts. The host plays as slot 0 (listen server).
+
+**Dedicated server:**
+```sh
+godot --headless --path . --server -- port=9050 players=8 bots=1 autostart=2
+```
+`autostart=N` starts the match automatically once N humans join; omit it and
+the first-joined client becomes the lobby leader with the Start button.
+
+**Scripted client (for testing):**
+```sh
+godot --path . -- join=127.0.0.1:9050 autopilot
+```
+`autopilot` replaces keyboard input with a bot driving off the replicated
+state — exercises the full client input path end-to-end.
+
+M2 limitations: no client-side prediction (your own capsule is ~100 ms behind
+your keys), no reconnect after match start (M3), lobby config is fixed on a
+dedicated server, disconnected players idle in place until eliminated.
+
 ## Milestone 1 — local play vs bots
 
 **Run:**

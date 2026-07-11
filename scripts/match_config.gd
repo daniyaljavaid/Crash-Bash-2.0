@@ -41,7 +41,16 @@ func record_win(slot: int) -> void:
 
 
 func player_label(slot: int) -> String:
-	var who := "P%d" % (slot + 1) if slot < human_count else "BOT"
+	var who: String
+	if Net.is_online():
+		if slot == Net.my_slot:
+			who = "YOU"
+		elif Net.slot_is_human(slot):
+			who = "P%d" % (slot + 1)
+		else:
+			who = "BOT"
+	else:
+		who = "P%d" % (slot + 1) if slot < human_count else "BOT"
 	return "%s %s (%s)" % [who, COLOR_NAMES[slot], CharacterStats.for_slot(slot)["name"]]
 
 

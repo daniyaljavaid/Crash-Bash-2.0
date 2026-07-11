@@ -7,7 +7,7 @@ extends Node3D
 const FOLLOW_WEIGHT := 0.3   # how far the camera drifts toward the action
 const SMOOTH_RATE := 3.0     # exponential smoothing rate (1/s)
 
-var _sim: MatchSim
+var _sim = null # MatchSim or ClientReplica — same read API
 var _base_pos := Vector3.ZERO
 
 
@@ -15,7 +15,7 @@ func _ready() -> void:
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 
 
-func setup(sim: MatchSim) -> void:
+func setup(sim) -> void:
 	_sim = sim
 	_base_pos = Vector3(0.0, sim.arena_radius * 1.8, sim.arena_radius * 1.5)
 	global_position = _base_pos

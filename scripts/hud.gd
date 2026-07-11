@@ -7,7 +7,7 @@ signal menu_requested
 
 const GO_BANNER_TIME := 0.9
 
-var _sim: MatchSim
+var _sim = null # MatchSim (offline/server) or ClientReplica (client) — same read API
 var _cells: Array[Dictionary] = []
 var _prev_state := -1
 var _go_left := 0.0
@@ -27,7 +27,7 @@ func _ready() -> void:
 		func() -> void: menu_requested.emit())
 
 
-func bind_sim(sim: MatchSim) -> void:
+func bind_sim(sim) -> void:
 	_sim = sim
 	_sim.player_eliminated.connect(_on_player_eliminated)
 	_sim.round_ended.connect(_on_round_ended)
@@ -113,4 +113,9 @@ func _show_end_panel(winner_slot: int) -> void:
 		row.add_child(swatch)
 		row.add_child(label)
 		_score_rows.add_child(row)
+	# Online, only the lobby leader may advance the match.
+	var next_btn: Button = $EndPanel/Panel/VBox/Buttons/NextButton
+	if Net.is_online() and not Net.i_am_leader():
+		next_btn.text = "Waiting for host..."
+		next_btn.disabled = true
 	_end_panel.visible = true

@@ -82,6 +82,14 @@ func sim_tick(input: PlayerInput, dt: float) -> void:
 	rotation.y = atan2(-facing.x, -facing.z)
 
 
+## Client-side visual stand-in: no physics, no collisions; the ClientReplica
+## writes interpolated transforms and replicated stats straight into it.
+func make_puppet() -> void:
+	collision_layer = 0
+	collision_mask = 0
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+
+
 func eliminate() -> void:
 	alive = false
 	velocity = Vector3.ZERO
