@@ -1,7 +1,18 @@
 # Shove Kings (working title)
 
-Original 3D sumo party game for Godot 4.4+. Four-to-eight players on a slippery
-ice floe; shove everyone else into the water; last one standing wins.
+Original 3D arctic party game for Godot 4.4+, 2-8 players. Three minigames
+(menu / lobby "Minigame" selector, `game=0..2` on dedicated servers):
+
+- **Shove Out** — sumo on an ice floe; shove everyone into the water; last
+  penguin standing wins.
+- **Tile Rush** — the floor is a claim-grid: walk to paint tiles your color,
+  shove rivals off their turf; falling only respawns you. Most tiles at 0:00.
+- **Snow Brawl** — the charge button throws snowballs instead of dashing;
+  ranged knockback, same deadly edges, last penguin standing.
+
+Arena variants (ice blocks / melting / power-ups / chaos) and bot difficulty
+apply to every minigame. More minigame genres (goal-defense, race) planned;
+per-game stages come later.
 
 ## Milestone 5 — meta & polish
 

@@ -4,6 +4,7 @@ extends Control
 
 @onready var _players_spin: SpinBox = $Center/VBox/PlayersRow/PlayersSpin
 @onready var _humans_spin: SpinBox = $Center/VBox/HumansRow/HumansSpin
+@onready var _game_opt: OptionButton = $Center/VBox/GameRow/GameOption
 @onready var _variant_opt: OptionButton = $Center/VBox/VariantRow/VariantOption
 @onready var _difficulty_opt: OptionButton = $Center/VBox/DifficultyRow/DifficultyOption
 @onready var _target_spin: SpinBox = $Center/VBox/TargetRow/TargetSpin
@@ -24,6 +25,9 @@ func _ready() -> void:
 	$Center/VBox/NetButtons/HostButton.pressed.connect(_on_host)
 	$Center/VBox/NetButtons/JoinButton.pressed.connect(_on_join)
 	$Center/VBox/QuitButton.pressed.connect(func() -> void: get_tree().quit())
+	for name in MatchConfig.MINIGAME_NAMES:
+		_game_opt.add_item(name)
+	_game_opt.selected = MatchConfig.minigame
 	for name in MatchConfig.VARIANT_NAMES:
 		_variant_opt.add_item(name)
 	_variant_opt.selected = MatchConfig.variant
@@ -65,7 +69,8 @@ func _on_start_local() -> void:
 		choices.append(opt.selected - 1) # item 0 = Auto = -1
 	MatchConfig.start_new_match(int(_players_spin.value), int(_humans_spin.value),
 		_variant_opt.selected as MatchConfig.Variant, int(_target_spin.value), choices,
-		_difficulty_opt.selected as MatchConfig.Difficulty)
+		_difficulty_opt.selected as MatchConfig.Difficulty,
+		_game_opt.selected as MatchConfig.Minigame)
 	get_tree().change_scene_to_file("res://scenes/arena.tscn")
 
 
@@ -127,6 +132,7 @@ func _bootstrap_dedicated_server() -> bool:
 	Net.lobby_fill_bots = fill_bots
 	Net.lobby_variant = MatchConfig.variant # honors `variant=` user arg
 	Net.lobby_difficulty = MatchConfig.difficulty # honors `difficulty=` user arg
+	Net.lobby_minigame = MatchConfig.minigame # honors `game=` user arg
 	print("[server] dedicated server listening on port %d (players=%d bots=%s autostart=%d variant=%d)" % [
 		port, Net.lobby_player_count, fill_bots, Net.autostart_humans, Net.lobby_variant])
 	get_tree().change_scene_to_file.call_deferred("res://scenes/lobby.tscn")

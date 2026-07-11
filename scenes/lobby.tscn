@@ -59,6 +59,18 @@ max_value = 8.0
 value = 4.0
 rounded = true
 
+[node name="GameRow" type="HBoxContainer" parent="Center/VBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="GameLabel" type="Label" parent="Center/VBox/GameRow"]
+layout_mode = 2
+text = "Minigame"
+
+[node name="GameOption" type="OptionButton" parent="Center/VBox/GameRow"]
+layout_mode = 2
+
 [node name="VariantRow" type="HBoxContainer" parent="Center/VBox"]
 layout_mode = 2
 alignment = 1

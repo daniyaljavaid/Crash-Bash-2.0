@@ -10,6 +10,9 @@ signal block_destroyed(index: int, at: Vector3)          # ice-blocks variant
 signal powerup_spawned(id: int, type: int, at: Vector3)  # power-ups variant
 signal powerup_collected(id: int, type: int, slot: int)
 signal player_hit(attacker_slot: int, victim_slot: int, at: Vector3)
+signal player_respawned(slot: int, at: Vector3)                 # Tile Rush
+signal ball_spawned(id: int, from: Vector3, dir: Vector3)       # Snow Brawl
+signal ball_gone(id: int, at: Vector3)
 
 enum State { COUNTDOWN, PLAYING, OVER }
 
@@ -25,6 +28,9 @@ var tick := 0
 var winner_slot := -1
 var ice_ring: IceBlockRing = null
 var power_ups: PowerUpManager = null
+var tile_grid: TileGrid = null
+var snowballs: SnowballManager = null
+var minigame := MatchConfig.Minigame.SHOVE
 
 var _started := false
 var _initial_radius := Tuning.ARENA_RADIUS_SMALL
@@ -37,6 +43,7 @@ var _platform_mesh: CylinderMesh = null
 ## Empty = M1 behavior (local humans by scheme, bots for the rest).
 func start_match(player_count: int, human_count: int,
 		controllers_override: Array[PlayerController] = []) -> void:
+	minigame = MatchConfig.minigame
 	arena_radius = radius_for_player_count(player_count)
 	_initial_radius = arena_radius
 	var platform := build_platform(arena_radius)
@@ -58,6 +65,20 @@ func start_match(player_count: int, human_count: int,
 			func(id: int, type: int, at: Vector3) -> void: powerup_spawned.emit(id, type, at))
 		power_ups.powerup_collected.connect(
 			func(id: int, type: int, slot: int) -> void: powerup_collected.emit(id, type, slot))
+	if minigame == MatchConfig.Minigame.TILE:
+		tile_grid = TileGrid.new()
+		add_child(tile_grid)
+		tile_grid.build(arena_radius, player_count)
+	elif minigame == MatchConfig.Minigame.SNOW:
+		snowballs = SnowballManager.new()
+		add_child(snowballs)
+		snowballs.setup(self)
+		snowballs.ball_spawned.connect(
+			func(id: int, from: Vector3, dir: Vector3) -> void: ball_spawned.emit(id, from, dir))
+		snowballs.ball_gone.connect(
+			func(id: int, at: Vector3) -> void: ball_gone.emit(id, at))
+		snowballs.ball_hit.connect(
+			func(attacker: int, victim: int, at: Vector3) -> void: player_hit.emit(attacker, victim, at))
 	_spawn_players(player_count, human_count, controllers_override)
 	time_left = Tuning.ROUND_TIME
 	countdown_left = Tuning.COUNTDOWN_TIME
@@ -80,10 +101,14 @@ func _physics_process(delta: float) -> void:
 				_melt_tick()
 			if power_ups != null:
 				power_ups.tick()
+			if snowballs != null:
+				snowballs.tick(delta)
 			for i in players.size():
 				var p := players[i]
 				if p.alive:
 					p.sim_tick(controllers[i].get_player_input(p, self), delta)
+					if tile_grid != null and p.is_on_floor():
+						tile_grid.claim_under(p)
 			_check_round_end()
 		State.OVER:
 			pass
@@ -105,6 +130,10 @@ func _spawn_players(player_count: int, human_count: int,
 		p.setup(i, MatchConfig.archetype_for_slot(i), MatchConfig.PLAYER_COLORS[i])
 		p.landed_hit.connect(func(victim: SimPlayer) -> void:
 			player_hit.emit(p.slot, victim.slot, victim.global_position))
+		if minigame == MatchConfig.Minigame.SNOW:
+			p.throw_mode = true
+			p.throw_requested.connect(func(dir: Vector3) -> void:
+				snowballs.throw_ball(p, dir))
 		var angle := TAU * float(i) / float(player_count)
 		var out := Vector3(sin(angle), 0.0, cos(angle))
 		p.global_position = out * arena_radius * Tuning.SPAWN_RADIUS_FRACTION + Vector3(0, 1.0, 0)
@@ -206,16 +235,37 @@ func _build_kill_zone() -> void:
 
 
 func _on_kill_zone_body_entered(body: Node3D) -> void:
-	if body is SimPlayer and body.alive:
-		var at: Vector3 = body.global_position
-		body.eliminate()
-		print("[sim] t=%.1fs eliminated slot %d (%s), %d alive" % [
-			Tuning.ROUND_TIME - time_left, body.slot,
-			MatchConfig.COLOR_NAMES[body.slot], alive_count()])
-		player_eliminated.emit(body.slot, at)
+	if not (body is SimPlayer) or not body.alive:
+		return
+	var at: Vector3 = body.global_position
+	if minigame == MatchConfig.Minigame.TILE:
+		# Tile Rush: falling costs claiming time, not the round.
+		_respawn(body, at)
+		return
+	body.eliminate()
+	print("[sim] t=%.1fs eliminated slot %d (%s), %d alive" % [
+		Tuning.ROUND_TIME - time_left, body.slot,
+		MatchConfig.COLOR_NAMES[body.slot], alive_count()])
+	player_eliminated.emit(body.slot, at)
+
+
+func _respawn(p: SimPlayer, fell_at: Vector3) -> void:
+	var angle := TAU * float(p.slot) / float(players.size())
+	var out := Vector3(sin(angle), 0.0, cos(angle))
+	p.velocity = Vector3.ZERO
+	p.stagger_left = 0.0
+	p.global_position = out * arena_radius * Tuning.SPAWN_RADIUS_FRACTION + Vector3(0, 1.0, 0)
+	p.reset_physics_interpolation()
+	player_respawned.emit(p.slot, fell_at)
 
 
 func _check_round_end() -> void:
+	if minigame == MatchConfig.Minigame.TILE:
+		# No eliminations: the clock decides, most tiles wins.
+		if time_left <= 0.0:
+			winner_slot = tile_grid.leader()
+			_finish()
+		return
 	var last_alive: SimPlayer = null
 	var n := 0
 	for p in players:

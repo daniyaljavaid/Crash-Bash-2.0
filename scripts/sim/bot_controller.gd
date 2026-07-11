@@ -90,12 +90,17 @@ func get_player_input(player: SimPlayer, sim) -> PlayerInput:
 	# Charge if close, off recovery, stamina up, the shove is worth it, and the
 	# post-charge slide won't carry the bot off the platform. Aim by overriding
 	# the move intent (the sim charges along the stick direction).
-	if dist < float(prof["charge_range"]) and player.recovery_left <= 0.0 \
+	# Snow Brawl throws are ranged and cost no self-momentum, so the engagement
+	# distance stretches and the landing check always passes.
+	var ranged: bool = player.throw_mode
+	var engage_range: float = 9.0 if ranged else float(prof["charge_range"])
+	if dist < engage_range and player.recovery_left <= 0.0 \
 			and player.stamina >= player.stats.stamina_cost:
 		var travel: float = Tuning.CHARGE_SPEED * Tuning.CHARGE_DURATION * (1.0 + player.stats.momentum_keep)
 		var landing: Vector3 = player.global_position + dir * travel
 		landing.y = 0.0
-		var safe: bool = landing.length() < sim.arena_radius - float(prof["landing_pad"])
+		var safe: bool = ranged \
+			or landing.length() < sim.arena_radius - float(prof["landing_pad"])
 		# Finisher: victim hugging the edge and the shove points squarely off
 		# the platform — take the shot even if the follow-through is risky.
 		var finisher: bool = _target_radius(target) > sim.arena_radius * 0.72 \

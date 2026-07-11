@@ -26,7 +26,7 @@ func add_shake(strength: float) -> void:
 
 func setup(sim) -> void:
 	_sim = sim
-	_base_pos = Vector3(0.0, sim.arena_radius * 1.8, sim.arena_radius * 1.5)
+	_base_pos = Vector3(0.0, sim.arena_radius * 1.45, sim.arena_radius * 1.25)
 	global_position = _base_pos
 	look_at(Vector3.ZERO)
 

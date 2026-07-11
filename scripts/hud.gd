@@ -59,6 +59,8 @@ func _process(delta: float) -> void:
 	_prev_state = _sim.state
 	for i in _sim.players.size():
 		_cells[i]["bar"].value = _sim.players[i].stamina
+		if _sim.tile_grid != null:
+			_cells[i]["count"].text = "%d tiles" % _sim.tile_grid.counts[i]
 
 
 func _build_strip() -> void:
@@ -79,8 +81,13 @@ func _build_strip() -> void:
 		cell.add_child(swatch)
 		cell.add_child(bar)
 		cell.add_child(label)
+		var count := Label.new() # tile count, Tile Rush only
+		count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		count.add_theme_font_size_override("font_size", 14)
+		count.visible = MatchConfig.minigame == MatchConfig.Minigame.TILE
+		cell.add_child(count)
 		_strip.add_child(cell)
-		_cells.append({"root": cell, "bar": bar, "label": label})
+		_cells.append({"root": cell, "bar": bar, "label": label, "count": count})
 
 
 func _on_player_eliminated(slot: int, _at: Vector3) -> void:

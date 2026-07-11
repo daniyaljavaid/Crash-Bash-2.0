@@ -42,6 +42,9 @@ func _ready() -> void:
 	_view.round_ended.connect(_on_round_ended)
 	_view.block_destroyed.connect(_on_block_destroyed)
 	_view.player_hit.connect(_on_player_hit)
+	_view.player_respawned.connect(_on_player_respawned)
+	_view.ball_spawned.connect(_on_ball_spawned)
+	_view.ball_gone.connect(_on_ball_gone)
 	if Net.mode != Net.Mode.CLIENT and _sim.power_ups != null:
 		_sim.powerup_spawned.connect(func(id: int, type: int, at: Vector3) -> void:
 			if Net.is_server():
@@ -137,6 +140,24 @@ func _on_player_hit(attacker_slot: int, victim_slot: int, at: Vector3) -> void:
 
 func _on_powerup_collected_fx(_id: int, type: int, _slot: int) -> void:
 	SoundBank.play("freeze" if type == PowerUpManager.Type.FREEZE_OTHERS else "pickup")
+
+
+func _on_player_respawned(slot: int, at: Vector3) -> void:
+	if Net.is_server():
+		Net.broadcast_player_respawned(slot, at)
+	_spawn_splash(Vector3(at.x, -2.3, at.z))
+	SoundBank.play("splash", -12.0)
+
+
+func _on_ball_spawned(id: int, from: Vector3, dir: Vector3) -> void:
+	if Net.is_server():
+		Net.broadcast_ball_spawned(id, from, dir)
+	SoundBank.play("whoosh", -14.0)
+
+
+func _on_ball_gone(id: int, at: Vector3) -> void:
+	if Net.is_server():
+		Net.broadcast_ball_gone(id, at)
 
 
 ## Brief global slow-mo on a landed hit. Offline only: online the server's

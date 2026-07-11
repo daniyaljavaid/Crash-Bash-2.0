@@ -21,8 +21,14 @@ var arena_radius := Tuning.ARENA_RADIUS_SMALL
 var tick := 0
 
 signal block_destroyed(index: int, at: Vector3)
+signal player_respawned(slot: int, at: Vector3)
+signal ball_spawned(id: int, from: Vector3, dir: Vector3)
+signal ball_gone(id: int, at: Vector3)
 
 var ice_ring: IceBlockRing = null
+var tile_grid: TileGrid = null
+
+var _balls := {} # id -> {node, dir} — client-side flight matching the sim's path
 
 var _snaps: Array[Dictionary] = []   # {tick, data}, ascending tick
 var _render_tick := -1.0
@@ -43,6 +49,10 @@ func start(player_count: int) -> void:
 		ice_ring.build(arena_radius)
 		ice_ring.block_destroyed.connect(
 			func(index: int, at: Vector3) -> void: block_destroyed.emit(index, at))
+	if MatchConfig.minigame == MatchConfig.Minigame.TILE:
+		tile_grid = TileGrid.new()
+		add_child(tile_grid)
+		tile_grid.build(arena_radius, player_count)
 	for i in player_count:
 		var p: SimPlayer = MatchSim.PLAYER_SCENE.instantiate()
 		add_child(p)
@@ -59,6 +69,9 @@ func start(player_count: int) -> void:
 	Net.net_powerup_spawned.connect(_on_powerup_spawned)
 	Net.net_powerup_collected.connect(_on_powerup_collected)
 	Net.net_player_hit.connect(_on_player_hit)
+	Net.net_player_respawned.connect(_on_respawned)
+	Net.net_ball_spawned.connect(_on_ball_spawned)
+	Net.net_ball_gone.connect(_on_ball_gone)
 
 
 func _exit_tree() -> void:
@@ -69,10 +82,32 @@ func _exit_tree() -> void:
 		Net.net_powerup_spawned.disconnect(_on_powerup_spawned)
 		Net.net_powerup_collected.disconnect(_on_powerup_collected)
 		Net.net_player_hit.disconnect(_on_player_hit)
+		Net.net_player_respawned.disconnect(_on_respawned)
+		Net.net_ball_spawned.disconnect(_on_ball_spawned)
+		Net.net_ball_gone.disconnect(_on_ball_gone)
 
 
 func _on_player_hit(attacker_slot: int, victim_slot: int, at: Vector3) -> void:
 	player_hit.emit(attacker_slot, victim_slot, at)
+
+
+func _on_respawned(slot: int, at: Vector3) -> void:
+	player_respawned.emit(slot, at)
+
+
+func _on_ball_spawned(id: int, from: Vector3, dir: Vector3) -> void:
+	var node := SnowballManager.make_ball_visual()
+	node.position = from
+	add_child(node)
+	_balls[id] = {"node": node, "dir": dir}
+	ball_spawned.emit(id, from, dir)
+
+
+func _on_ball_gone(id: int, at: Vector3) -> void:
+	if _balls.has(id):
+		_balls[id]["node"].queue_free()
+		_balls.erase(id)
+	ball_gone.emit(id, at)
 
 
 func _on_powerup_spawned(id: int, type: int, at: Vector3) -> void:
@@ -90,7 +125,7 @@ func _on_powerup_collected(id: int, _type: int, _slot: int) -> void:
 
 func _on_snapshot(p_tick: int, p_state: int, p_time_left: float,
 		p_countdown_left: float, p_radius: float, p_block_mask: int,
-		data: PackedFloat32Array) -> void:
+		data: PackedFloat32Array, extra: PackedByteArray) -> void:
 	if not _snaps.is_empty() and p_tick <= _snaps[-1]["tick"]:
 		return # late/duplicate packet
 	_snaps.append({"tick": p_tick, "data": data})
@@ -110,6 +145,8 @@ func _on_snapshot(p_tick: int, p_state: int, p_time_left: float,
 		MatchSim.resize_platform(_platform_shape, _platform_mesh, arena_radius)
 	if ice_ring != null:
 		ice_ring.apply_mask(p_block_mask)
+	if tile_grid != null:
+		tile_grid.apply_owners(extra)
 	# Non-interpolated stats come straight from the newest snapshot.
 	for i in players.size():
 		var base := i * Net.PLAYER_STRIDE
@@ -145,6 +182,11 @@ func _on_round_over(winner_slot: int, _wins: Array) -> void:
 
 
 func _process(delta: float) -> void:
+	# Snowballs fly deterministic straight lines; the client animates them
+	# locally from the spawn event and removes them on the gone event.
+	for id in _balls:
+		var b: Dictionary = _balls[id]
+		b["node"].position += b["dir"] * SnowballManager.SPEED * delta
 	if _snaps.size() < 2:
 		return
 	var newest: float = _snaps[-1]["tick"]

@@ -5,7 +5,9 @@ extends CharacterBody3D
 ## PlayerInput each tick. Visuals (mesh color, HUD) only READ this state.
 
 signal landed_hit(victim: SimPlayer) # charge connected; presentation juice hook
+signal throw_requested(dir: Vector3) # Snow Brawl: charge button throws instead
 
+var throw_mode := false # Snow Brawl: charge input becomes a ranged throw
 var slot := 0
 var stats := {}          # one entry of CharacterStats.ARCHETYPES
 var stamina := Tuning.STAMINA_MAX
@@ -108,7 +110,10 @@ func sim_tick(input: PlayerInput, dt: float) -> void:
 			_end_charge(stats.momentum_keep) # whiffed: keep momentum (overshoot risk)
 	else:
 		if charge_edge and recovery_left <= 0.0 and stamina >= stats.stamina_cost:
-			_start_charge(move3)
+			if throw_mode:
+				_throw(move3)
+			else:
+				_start_charge(move3)
 		else:
 			velocity.x += move3.x * Tuning.MOVE_ACCEL * stats.accel_mult * dt
 			velocity.z += move3.z * Tuning.MOVE_ACCEL * stats.accel_mult * dt
@@ -188,6 +193,15 @@ func eliminate() -> void:
 	# Deferred: elimination is triggered from an Area3D signal during physics flush.
 	set_deferred("collision_layer", 0)
 	set_deferred("collision_mask", 0)
+
+
+## Snow Brawl: spend stamina, aim like a charge, let the sim spawn the ball.
+func _throw(move3: Vector3) -> void:
+	stamina -= stats.stamina_cost
+	recovery_left = stats.recovery + 0.3
+	var dir := move3.normalized() if move3.length_squared() > 0.01 else facing
+	facing = dir
+	throw_requested.emit(dir)
 
 
 ## Charge aims along the current move intent (responsive: you charge where you
