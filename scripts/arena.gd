@@ -34,6 +34,14 @@ func _ready() -> void:
 	_hud.bind_sim(_view)
 	_view.player_eliminated.connect(_on_player_eliminated)
 	_view.round_ended.connect(_on_round_ended)
+	_view.block_destroyed.connect(_on_block_destroyed)
+	if Net.mode != Net.Mode.CLIENT and _sim.power_ups != null:
+		_sim.powerup_spawned.connect(func(id: int, type: int, at: Vector3) -> void:
+			if Net.is_server():
+				Net.broadcast_powerup_spawned(id, type, at))
+		_sim.powerup_collected.connect(func(id: int, type: int, slot: int) -> void:
+			if Net.is_server():
+				Net.broadcast_powerup_collected(id, type, slot))
 	_hud.next_round_requested.connect(_on_next_round_requested)
 	_hud.menu_requested.connect(_on_menu_requested)
 	if Net.is_online():
@@ -86,6 +94,12 @@ func _on_player_eliminated(_slot: int, at: Vector3) -> void:
 	_spawn_splash(Vector3(at.x, -2.3, at.z))
 
 
+func _on_block_destroyed(index: int, at: Vector3) -> void:
+	if Net.is_server():
+		Net.broadcast_block_destroyed(index, at)
+	_spawn_splash(at, Color(0.85, 0.93, 1.0))
+
+
 func _on_round_ended(winner_slot: int) -> void:
 	if Net.mode == Net.Mode.CLIENT:
 		return # wins arrive replicated with the round-over event
@@ -108,7 +122,7 @@ func _on_menu_requested() -> void:
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 
 
-func _spawn_splash(at: Vector3) -> void:
+func _spawn_splash(at: Vector3, color := Color(0.55, 0.75, 0.95)) -> void:
 	var p := CPUParticles3D.new()
 	p.one_shot = true
 	p.explosiveness = 1.0
@@ -123,7 +137,7 @@ func _spawn_splash(at: Vector3) -> void:
 	mesh.radius = 0.08
 	mesh.height = 0.16
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.55, 0.75, 0.95)
+	mat.albedo_color = color
 	mesh.material = mat
 	p.mesh = mesh
 	p.position = at
@@ -132,13 +146,17 @@ func _spawn_splash(at: Vector3) -> void:
 	get_tree().create_timer(2.0).timeout.connect(p.queue_free)
 
 
-# Dev tool: `godot --path . res://scenes/arena.tscn -- screenshot=/tmp/shot.png`
-# saves a viewport capture ~8 s into the round and quits.
+# Dev tool: `godot --path . res://scenes/arena.tscn -- screenshot=/tmp/shot.png
+# [shotdelay=30]` saves a viewport capture (default ~8 s in) and quits.
 func _maybe_schedule_screenshot() -> void:
+	var delay := 8.0
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("shotdelay="):
+			delay = arg.get_slice("=", 1).to_float()
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("screenshot="):
 			var path := arg.get_slice("=", 1)
-			await get_tree().create_timer(8.0).timeout
+			await get_tree().create_timer(delay).timeout
 			get_viewport().get_texture().get_image().save_png(path)
 			print("[debug] screenshot saved to ", path)
 			get_tree().quit()

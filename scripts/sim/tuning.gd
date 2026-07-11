@@ -35,3 +35,29 @@ const STAMINA_REGEN := 40.0                # per second (full bar in 2.5 s); arc
 # --- Round ---
 const ROUND_TIME := 90.0
 const COUNTDOWN_TIME := 3.0
+
+# --- Variant: melting platform ---
+const MELT_START_DELAY := 10.0        # seconds after GO before shrinking starts
+const MELT_MIN_FRACTION := 0.3        # platform never shrinks below this fraction
+const MELT_DURATION := 70.0           # seconds from melt start to minimum radius
+
+# --- Variant: edge ice blocks ---
+const BLOCK_WIDTH := 2.3              # target arc width; count derives from circumference
+const BLOCK_GAP := 0.45
+const BLOCK_HEIGHT := 1.3
+const BLOCK_DEPTH := 0.7
+const BLOCK_SMASH_BRAKE := 0.15       # attacker keeps this velocity fraction after smashing
+const BLOCK_BREAK_SPEED := 7.0        # a body slammed in faster than this smashes the block
+const BLOCK_ABSORB := 0.4             # velocity kept after crashing through a block
+
+# --- Variant: power-up drone ---
+const POWERUP_INTERVAL := 15.0        # drop cycle
+const POWERUP_EFFECT_TIME := 8.0      # grow/shrink duration
+const POWERUP_FREEZE_TIME := 2.5      # freeze-others duration
+const POWERUP_PICKUP_RADIUS := 1.1    # collect distance
+const GROW_SCALE := 1.45
+const GROW_POWER := 1.5               # outgoing charge impulse multiplier
+const GROW_KNOCKBACK_RESIST := 0.6    # incoming impulse multiplier
+const SHRINK_SCALE := 0.65
+const SHRINK_POWER := 0.7
+const SHRINK_KNOCKBACK := 1.5

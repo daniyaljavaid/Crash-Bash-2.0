@@ -4,6 +4,7 @@ extends Control
 
 @onready var _players_spin: SpinBox = $Center/VBox/PlayersRow/PlayersSpin
 @onready var _humans_spin: SpinBox = $Center/VBox/HumansRow/HumansSpin
+@onready var _variant_opt: OptionButton = $Center/VBox/VariantRow/VariantOption
 @onready var _ip_edit: LineEdit = $Center/VBox/NetRow/IpEdit
 @onready var _port_edit: LineEdit = $Center/VBox/NetRow/PortEdit
 @onready var _error_label: Label = $Center/VBox/ErrorLabel
@@ -18,13 +19,17 @@ func _ready() -> void:
 	$Center/VBox/NetButtons/HostButton.pressed.connect(_on_host)
 	$Center/VBox/NetButtons/JoinButton.pressed.connect(_on_join)
 	$Center/VBox/QuitButton.pressed.connect(func() -> void: get_tree().quit())
+	for name in MatchConfig.VARIANT_NAMES:
+		_variant_opt.add_item(name)
+	_variant_opt.selected = MatchConfig.variant
 	_ip_edit.text = MatchConfig.last_ip
 	_port_edit.text = str(MatchConfig.last_port)
 	$Center/VBox/StartButton.grab_focus()
 
 
 func _on_start_local() -> void:
-	MatchConfig.start_new_match(int(_players_spin.value), int(_humans_spin.value))
+	MatchConfig.start_new_match(int(_players_spin.value), int(_humans_spin.value),
+		_variant_opt.selected as MatchConfig.Variant)
 	get_tree().change_scene_to_file("res://scenes/arena.tscn")
 
 
@@ -82,8 +87,9 @@ func _bootstrap_dedicated_server() -> bool:
 		return true
 	Net.lobby_player_count = MatchConfig.player_count # honors `players=` user arg
 	Net.lobby_fill_bots = fill_bots
-	print("[server] dedicated server listening on port %d (players=%d bots=%s autostart=%d)" % [
-		port, Net.lobby_player_count, fill_bots, Net.autostart_humans])
+	Net.lobby_variant = MatchConfig.variant # honors `variant=` user arg
+	print("[server] dedicated server listening on port %d (players=%d bots=%s autostart=%d variant=%d)" % [
+		port, Net.lobby_player_count, fill_bots, Net.autostart_humans, Net.lobby_variant])
 	get_tree().change_scene_to_file.call_deferred("res://scenes/lobby.tscn")
 	return true
 
@@ -103,6 +109,7 @@ func _bootstrap_auto_join() -> bool:
 				if a2.begins_with("autostart="):
 					Net.autostart_humans = a2.get_slice("=", 1).to_int()
 			Net.lobby_player_count = MatchConfig.player_count
+			Net.lobby_variant = MatchConfig.variant
 			print("[host] listen server on port %d" % host_port)
 			get_tree().change_scene_to_file.call_deferred("res://scenes/lobby.tscn")
 			return true

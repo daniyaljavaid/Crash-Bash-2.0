@@ -19,13 +19,29 @@ var countdown_left := Tuning.COUNTDOWN_TIME
 var arena_radius := Tuning.ARENA_RADIUS_SMALL
 var tick := 0
 
+signal block_destroyed(index: int, at: Vector3)
+
+var ice_ring: IceBlockRing = null
+
 var _snaps: Array[Dictionary] = []   # {tick, data}, ascending tick
 var _render_tick := -1.0
+var _platform_shape: CylinderShape3D = null
+var _platform_mesh: CylinderMesh = null
+var _pickups := {} # id -> Node3D
 
 
 func start(player_count: int) -> void:
 	arena_radius = MatchSim.radius_for_player_count(player_count)
-	add_child(MatchSim.build_platform(arena_radius))
+	var platform := MatchSim.build_platform(arena_radius)
+	add_child(platform)
+	_platform_shape = platform.get_meta("shape")
+	_platform_mesh = platform.get_meta("mesh")
+	if MatchConfig.has_ice_blocks():
+		ice_ring = IceBlockRing.new()
+		add_child(ice_ring)
+		ice_ring.build(arena_radius)
+		ice_ring.block_destroyed.connect(
+			func(index: int, at: Vector3) -> void: block_destroyed.emit(index, at))
 	for i in player_count:
 		var p: SimPlayer = MatchSim.PLAYER_SCENE.instantiate()
 		add_child(p)
@@ -39,6 +55,8 @@ func start(player_count: int) -> void:
 	Net.snapshot_received.connect(_on_snapshot)
 	Net.net_eliminated.connect(_on_eliminated)
 	Net.net_round_over.connect(_on_round_over)
+	Net.net_powerup_spawned.connect(_on_powerup_spawned)
+	Net.net_powerup_collected.connect(_on_powerup_collected)
 
 
 func _exit_tree() -> void:
@@ -46,10 +64,26 @@ func _exit_tree() -> void:
 		Net.snapshot_received.disconnect(_on_snapshot)
 		Net.net_eliminated.disconnect(_on_eliminated)
 		Net.net_round_over.disconnect(_on_round_over)
+		Net.net_powerup_spawned.disconnect(_on_powerup_spawned)
+		Net.net_powerup_collected.disconnect(_on_powerup_collected)
+
+
+func _on_powerup_spawned(id: int, type: int, at: Vector3) -> void:
+	var node := PowerUpManager.make_pickup_visual(type)
+	node.position = at
+	add_child(node)
+	_pickups[id] = node
+
+
+func _on_powerup_collected(id: int, _type: int, _slot: int) -> void:
+	if _pickups.has(id):
+		_pickups[id].queue_free()
+		_pickups.erase(id)
 
 
 func _on_snapshot(p_tick: int, p_state: int, p_time_left: float,
-		p_countdown_left: float, data: PackedFloat32Array) -> void:
+		p_countdown_left: float, p_radius: float, p_block_mask: int,
+		data: PackedFloat32Array) -> void:
 	if not _snaps.is_empty() and p_tick <= _snaps[-1]["tick"]:
 		return # late/duplicate packet
 	_snaps.append({"tick": p_tick, "data": data})
@@ -64,6 +98,11 @@ func _on_snapshot(p_tick: int, p_state: int, p_time_left: float,
 		state = p_state as MatchSim.State
 	time_left = p_time_left
 	countdown_left = p_countdown_left
+	if absf(p_radius - arena_radius) > 0.001: # melting variant
+		arena_radius = p_radius
+		MatchSim.resize_platform(_platform_shape, _platform_mesh, arena_radius)
+	if ice_ring != null:
+		ice_ring.apply_mask(p_block_mask)
 	# Non-interpolated stats come straight from the newest snapshot.
 	for i in players.size():
 		var base := i * Net.PLAYER_STRIDE
@@ -72,6 +111,14 @@ func _on_snapshot(p_tick: int, p_state: int, p_time_left: float,
 		players[i].stamina = data[base + 4]
 		var flags := int(data[base + 5])
 		players[i].charging = flags & Net.FLAG_CHARGING != 0
+		var frozen := flags & Net.FLAG_FROZEN != 0
+		if frozen != (players[i].frozen_left > 0.0):
+			players[i].frozen_left = 1.0 if frozen else 0.0
+			players[i].set_frozen_visual(frozen)
+		var vscale := data[base + 6]
+		if absf(vscale - players[i].visual_scale) > 0.01:
+			players[i].visual_scale = vscale
+			players[i].set_visual_scale(vscale)
 		if players[i].alive and flags & Net.FLAG_ALIVE == 0:
 			players[i].alive = false
 			players[i].visible = false

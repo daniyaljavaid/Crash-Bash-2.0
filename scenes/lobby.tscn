@@ -59,6 +59,18 @@ max_value = 8.0
 value = 4.0
 rounded = true
 
+[node name="VariantRow" type="HBoxContainer" parent="Center/VBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="VariantLabel" type="Label" parent="Center/VBox/VariantRow"]
+layout_mode = 2
+text = "Arena variant"
+
+[node name="VariantOption" type="OptionButton" parent="Center/VBox/VariantRow"]
+layout_mode = 2
+
 [node name="BotsCheck" type="CheckButton" parent="Center/VBox"]
 layout_mode = 2
 button_pressed = true

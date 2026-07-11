@@ -11,18 +11,22 @@ extends Node
 
 signal lobby_updated
 signal match_started
-signal snapshot_received(tick: int, state: int, time_left: float, countdown_left: float, data: PackedFloat32Array)
+signal snapshot_received(tick: int, state: int, time_left: float, countdown_left: float, radius: float, block_mask: int, data: PackedFloat32Array)
 signal net_eliminated(slot: int, at: Vector3)
 signal net_round_over(winner_slot: int, wins: Array)
+signal net_block_destroyed(index: int, at: Vector3)
+signal net_powerup_spawned(id: int, type: int, at: Vector3)
+signal net_powerup_collected(id: int, type: int, slot: int)
 signal session_ended(reason: String)
 
 enum Mode { OFFLINE, SERVER, CLIENT }
 
 const DEFAULT_PORT := 9050
 const SNAPSHOT_EVERY_N_TICKS := 3      # 60 Hz sim -> 20 Hz snapshots
-const PLAYER_STRIDE := 6               # x, y, z, rot_y, stamina, flags
+const PLAYER_STRIDE := 7               # x, y, z, rot_y, stamina, flags, visual_scale
 const FLAG_ALIVE := 1
 const FLAG_CHARGING := 2
+const FLAG_FROZEN := 4
 const INPUT_STALE_TICKS := 15          # zero a remote input not refreshed for 0.25 s
 
 var mode := Mode.OFFLINE
@@ -33,6 +37,7 @@ var lobby_peer_ids: Array[int] = []    # human peers in the match roster, join o
 var waiting_peer_ids: Array[int] = []  # joined mid-round; merged into the roster next round
 var lobby_player_count := 4
 var lobby_fill_bots := true
+var lobby_variant := 0                 # MatchConfig.Variant, host/leader-chosen
 var autostart_humans := 0              # auto-start once N humans joined (0 = off)
 var autonext_seconds := 0              # server: auto-start next round after N s (0 = manual)
 var current_port := DEFAULT_PORT
@@ -147,16 +152,17 @@ func _on_connected_to_server() -> void:
 	lobby_updated.emit()
 
 
-func set_lobby_config(player_count: int, fill_bots: bool) -> void:
+func set_lobby_config(player_count: int, fill_bots: bool, variant: int) -> void:
 	lobby_player_count = clampi(player_count, 2, 8)
 	lobby_fill_bots = fill_bots
+	lobby_variant = clampi(variant, 0, MatchConfig.Variant.size() - 1)
 	_broadcast_lobby()
 
 
 func _broadcast_lobby() -> void:
 	if is_server():
 		_s2c_lobby_state.rpc(lobby_peer_ids, waiting_peer_ids,
-			lobby_player_count, lobby_fill_bots, _round_active)
+			lobby_player_count, lobby_fill_bots, lobby_variant, _round_active)
 		lobby_updated.emit()
 		if autostart_humans > 0 and not _round_active \
 				and lobby_peer_ids.size() >= autostart_humans:
@@ -165,11 +171,12 @@ func _broadcast_lobby() -> void:
 
 @rpc("authority", "call_remote", "reliable")
 func _s2c_lobby_state(peer_ids: Array, waiting_ids: Array, player_count: int,
-		fill_bots: bool, in_progress: bool) -> void:
+		fill_bots: bool, variant: int, in_progress: bool) -> void:
 	lobby_peer_ids.assign(peer_ids)
 	waiting_peer_ids.assign(waiting_ids)
 	lobby_player_count = player_count
 	lobby_fill_bots = fill_bots
+	lobby_variant = variant
 	match_in_progress = in_progress
 	lobby_updated.emit()
 
@@ -231,8 +238,8 @@ func _try_start(requester: int) -> void:
 	MatchConfig.wins = wins
 	_round_active = true
 	match_in_progress = true
-	_s2c_match_start.rpc(slot_peers, wins)
-	_apply_match_start(slot_peers, wins)
+	_s2c_match_start.rpc(slot_peers, wins, lobby_variant)
+	_apply_match_start(slot_peers, wins, lobby_variant)
 
 
 func _slot_identity(slot: int) -> String:
@@ -241,18 +248,19 @@ func _slot_identity(slot: int) -> String:
 
 
 @rpc("authority", "call_remote", "reliable")
-func _s2c_match_start(assignments: Array, wins: Array) -> void:
+func _s2c_match_start(assignments: Array, wins: Array, variant: int) -> void:
 	_round_active = true
-	_apply_match_start(assignments, wins)
+	_apply_match_start(assignments, wins, variant)
 
 
-func _apply_match_start(assignments: Array, wins: Array) -> void:
+func _apply_match_start(assignments: Array, wins: Array, variant: int) -> void:
 	slot_peers.assign(assignments)
 	my_slot = slot_peers.find(multiplayer.get_unique_id())
 	match_in_progress = true
-	print("[net] match starting: slots=%s my_slot=%d wins=%s" % [
-		str(assignments), my_slot, str(wins)])
+	print("[net] match starting: slots=%s my_slot=%d wins=%s variant=%d" % [
+		str(assignments), my_slot, str(wins), variant])
 	MatchConfig.player_count = slot_peers.size()
+	MatchConfig.variant = variant as MatchConfig.Variant
 	MatchConfig.wins.assign(wins)
 	match_started.emit()
 	get_tree().change_scene_to_file("res://scenes/arena.tscn")
@@ -344,13 +352,19 @@ func broadcast_snapshot(sim: MatchSim) -> void:
 			flags |= FLAG_ALIVE
 		if p.charging:
 			flags |= FLAG_CHARGING
+		if p.frozen_left > 0.0:
+			flags |= FLAG_FROZEN
 		data[base + 5] = float(flags)
-	_s2c_snapshot.rpc(sim.tick, sim.state, sim.time_left, sim.countdown_left, data)
+		data[base + 6] = p.visual_scale
+	var mask: int = sim.ice_ring.alive_mask if sim.ice_ring != null else 0
+	_s2c_snapshot.rpc(sim.tick, sim.state, sim.time_left, sim.countdown_left,
+		sim.arena_radius, mask, data)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _s2c_snapshot(tick: int, state: int, time_left: float, countdown_left: float, data: PackedFloat32Array) -> void:
-	snapshot_received.emit(tick, state, time_left, countdown_left, data)
+func _s2c_snapshot(tick: int, state: int, time_left: float, countdown_left: float,
+		radius: float, block_mask: int, data: PackedFloat32Array) -> void:
+	snapshot_received.emit(tick, state, time_left, countdown_left, radius, block_mask, data)
 
 
 func broadcast_eliminated(slot: int, at: Vector3) -> void:
@@ -360,6 +374,33 @@ func broadcast_eliminated(slot: int, at: Vector3) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _s2c_eliminated(slot: int, at: Vector3) -> void:
 	net_eliminated.emit(slot, at)
+
+
+func broadcast_block_destroyed(index: int, at: Vector3) -> void:
+	_s2c_block_destroyed.rpc(index, at)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _s2c_block_destroyed(index: int, at: Vector3) -> void:
+	net_block_destroyed.emit(index, at)
+
+
+func broadcast_powerup_spawned(id: int, type: int, at: Vector3) -> void:
+	_s2c_powerup_spawned.rpc(id, type, at)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _s2c_powerup_spawned(id: int, type: int, at: Vector3) -> void:
+	net_powerup_spawned.emit(id, type, at)
+
+
+func broadcast_powerup_collected(id: int, type: int, slot: int) -> void:
+	_s2c_powerup_collected.rpc(id, type, slot)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _s2c_powerup_collected(id: int, type: int, slot: int) -> void:
+	net_powerup_collected.emit(id, type, slot)
 
 
 func broadcast_round_over(winner_slot: int, wins: Array) -> void:

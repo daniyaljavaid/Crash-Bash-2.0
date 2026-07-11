@@ -16,8 +16,12 @@ const COLOR_NAMES := ["RED", "BLUE", "GREEN", "YELLOW", "PURPLE", "ORANGE", "CYA
 
 const SETTINGS_PATH := "user://settings.cfg"
 
+enum Variant { CLASSIC, ICE_BLOCKS, MELTING, POWER_UPS, CHAOS }
+const VARIANT_NAMES := ["Classic", "Ice Blocks", "Melting Platform", "Power-Ups", "Chaos (all)"]
+
 var player_count := 4
 var human_count := 1
+var variant := Variant.CLASSIC
 var wins: Array[int] = []
 
 var vsync_enabled := true
@@ -34,10 +38,23 @@ func _ready() -> void:
 	apply_video_settings()
 
 
-func start_new_match(players: int, humans: int) -> void:
+func start_new_match(players: int, humans: int, p_variant := Variant.CLASSIC) -> void:
 	player_count = clampi(players, 2, 8)
 	human_count = clampi(humans, 1, mini(4, player_count))
+	variant = p_variant
 	_reset_wins()
+
+
+func has_ice_blocks() -> bool:
+	return variant == Variant.ICE_BLOCKS or variant == Variant.CHAOS
+
+
+func has_melting() -> bool:
+	return variant == Variant.MELTING or variant == Variant.CHAOS
+
+
+func has_power_ups() -> bool:
+	return variant == Variant.POWER_UPS or variant == Variant.CHAOS
 
 
 func record_win(slot: int) -> void:
@@ -99,3 +116,5 @@ func _parse_cmdline() -> void:
 			player_count = clampi(arg.get_slice("=", 1).to_int(), 2, 8)
 		elif arg.begins_with("humans="):
 			human_count = clampi(arg.get_slice("=", 1).to_int(), 0, 4)
+		elif arg.begins_with("variant="):
+			variant = clampi(arg.get_slice("=", 1).to_int(), 0, Variant.size() - 1) as Variant

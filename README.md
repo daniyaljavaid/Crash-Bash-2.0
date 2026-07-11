@@ -3,6 +3,26 @@
 Original 3D sumo party game for Godot 4.4+. Four-to-eight players on a slippery
 ice floe; shove everyone else into the water; last one standing wins.
 
+## Milestone 4 — arena variants
+
+Pick a variant in the main menu (local) or lobby (host/leader). Dedicated
+servers take `variant=N` (0 Classic, 1 Ice Blocks, 2 Melting, 3 Power-Ups,
+4 Chaos = all three).
+
+- **Ice Blocks** — a wall of blocks rings the platform edge. A charge smashes
+  one open (and spends the charge); a body slammed in fast enough crashes
+  straight through. Nobody falls until edges are opened.
+- **Melting Platform** — 10 s in, the floe starts shrinking to 30 % of its
+  size over ~70 s. The safe zone follows the collision shape exactly.
+- **Power-Ups** — a drop lands every 15 s, cycling Grow (bigger shoves,
+  knockback resistance), Shrink-Others, and Freeze-Others (2.5 s). Effects
+  last 8 s and change stats + silhouette, not the hitbox.
+- **Chaos** — all three at once. Rim blocks fall into the water as the edge
+  melts past them.
+
+All variant state replicates online: block masks and platform radius ride the
+20 Hz snapshots, drops/collections are reliable events.
+
 ## Milestone 3 — WAN play & deployment
 
 ### Export builds

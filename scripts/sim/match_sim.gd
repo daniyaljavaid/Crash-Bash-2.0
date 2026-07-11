@@ -6,6 +6,9 @@ extends Node3D
 
 signal player_eliminated(slot: int, at: Vector3)
 signal round_ended(winner_slot: int) # -1 = tie
+signal block_destroyed(index: int, at: Vector3)          # ice-blocks variant
+signal powerup_spawned(id: int, type: int, at: Vector3)  # power-ups variant
+signal powerup_collected(id: int, type: int, slot: int)
 
 enum State { COUNTDOWN, PLAYING, OVER }
 
@@ -19,8 +22,13 @@ var time_left := Tuning.ROUND_TIME
 var countdown_left := Tuning.COUNTDOWN_TIME
 var tick := 0
 var winner_slot := -1
+var ice_ring: IceBlockRing = null
+var power_ups: PowerUpManager = null
 
 var _started := false
+var _initial_radius := Tuning.ARENA_RADIUS_SMALL
+var _platform_shape: CylinderShape3D = null
+var _platform_mesh: CylinderMesh = null
 
 
 ## controllers_override lets the network layer supply per-slot controllers
@@ -29,8 +37,26 @@ var _started := false
 func start_match(player_count: int, human_count: int,
 		controllers_override: Array[PlayerController] = []) -> void:
 	arena_radius = radius_for_player_count(player_count)
-	add_child(build_platform(arena_radius))
+	_initial_radius = arena_radius
+	var platform := build_platform(arena_radius)
+	add_child(platform)
+	_platform_shape = platform.get_meta("shape")
+	_platform_mesh = platform.get_meta("mesh")
 	_build_kill_zone()
+	if MatchConfig.has_ice_blocks():
+		ice_ring = IceBlockRing.new()
+		add_child(ice_ring)
+		ice_ring.build(arena_radius)
+		ice_ring.block_destroyed.connect(
+			func(index: int, at: Vector3) -> void: block_destroyed.emit(index, at))
+	if MatchConfig.has_power_ups():
+		power_ups = PowerUpManager.new()
+		add_child(power_ups)
+		power_ups.setup(self)
+		power_ups.powerup_spawned.connect(
+			func(id: int, type: int, at: Vector3) -> void: powerup_spawned.emit(id, type, at))
+		power_ups.powerup_collected.connect(
+			func(id: int, type: int, slot: int) -> void: powerup_collected.emit(id, type, slot))
 	_spawn_players(player_count, human_count, controllers_override)
 	time_left = Tuning.ROUND_TIME
 	countdown_left = Tuning.COUNTDOWN_TIME
@@ -49,6 +75,10 @@ func _physics_process(delta: float) -> void:
 		State.PLAYING:
 			tick += 1
 			time_left = maxf(time_left - delta, 0.0)
+			if MatchConfig.has_melting():
+				_melt_tick()
+			if power_ups != null:
+				power_ups.tick()
 			for i in players.size():
 				var p := players[i]
 				if p.alive:
@@ -102,6 +132,28 @@ static func radius_for_player_count(player_count: int) -> float:
 		+ maxf(0.0, player_count - 4) * Tuning.ARENA_RADIUS_PER_EXTRA_PLAYER
 
 
+## Melting variant: the platform shrinks linearly after a grace period.
+## Collision and mesh follow arena_radius, so bots (which read arena_radius
+## live) adapt automatically and players beyond the new edge just fall.
+func _melt_tick() -> void:
+	var elapsed := Tuning.ROUND_TIME - time_left
+	var melt_t := clampf((elapsed - Tuning.MELT_START_DELAY) / Tuning.MELT_DURATION, 0.0, 1.0)
+	var target := _initial_radius * lerpf(1.0, Tuning.MELT_MIN_FRACTION, melt_t)
+	if absf(target - arena_radius) < 0.001:
+		return
+	arena_radius = target
+	resize_platform(_platform_shape, _platform_mesh, arena_radius)
+	if ice_ring != null:
+		ice_ring.melt_check(arena_radius)
+
+
+## Shared with ClientReplica (which resizes from snapshot data).
+static func resize_platform(shape: CylinderShape3D, mesh: CylinderMesh, radius: float) -> void:
+	shape.radius = radius
+	mesh.top_radius = radius
+	mesh.bottom_radius = radius + 0.35
+
+
 ## Also used by ClientReplica for the visual copy of the arena.
 static func build_platform(radius: float) -> StaticBody3D:
 	var platform := StaticBody3D.new()
@@ -130,6 +182,8 @@ static func build_platform(radius: float) -> StaticBody3D:
 	mat.roughness = 0.15
 	mesh_i.material_override = mat
 	platform.add_child(mesh_i)
+	platform.set_meta("shape", cyl)
+	platform.set_meta("mesh", cm)
 	return platform
 
 

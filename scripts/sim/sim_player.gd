@@ -15,8 +15,17 @@ var charge_dir := Vector3.FORWARD
 var facing := Vector3.FORWARD
 var stagger_left := 0.0 # can't steer while > 0 (just got charged into)
 
+# Power-up state (all sim-authoritative; visuals mirror via snapshots)
+var power_mult := 1.0       # outgoing charge impulse multiplier
+var knockback_mult := 1.0   # incoming impulse multiplier
+var visual_scale := 1.0     # mesh-only scale; collision stays constant
+var frozen_left := 0.0
+var effect_left := 0.0      # remaining grow/shrink time
+
 var _prev_charge_held := false
 var _hit_landed := false
+var _base_color := Color.WHITE
+var _was_frozen := false
 
 @onready var _mesh: MeshInstance3D = $Mesh
 @onready var _nose: MeshInstance3D = $Nose
@@ -27,6 +36,7 @@ func setup(p_slot: int, p_stats: Dictionary, color: Color) -> void:
 	stats = p_stats
 	collision_layer = 2
 	collision_mask = 3 # platform (1) + other players (2)
+	_base_color = color
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	_mesh.material_override = mat
@@ -43,14 +53,19 @@ func sim_tick(input: PlayerInput, dt: float) -> void:
 	stamina = minf(stamina + Tuning.STAMINA_REGEN * stats.regen_mult * dt, Tuning.STAMINA_MAX)
 	recovery_left = maxf(recovery_left - dt, 0.0)
 	stagger_left = maxf(stagger_left - dt, 0.0)
+	frozen_left = maxf(frozen_left - dt, 0.0)
+	if effect_left > 0.0:
+		effect_left -= dt
+		if effect_left <= 0.0:
+			_clear_size_effect()
 
 	var move3 := Vector3(input.move.x, 0.0, input.move.y)
-	if stagger_left > 0.0:
-		move3 = Vector3.ZERO # knocked silly: slide with no steering
+	if stagger_left > 0.0 or frozen_left > 0.0:
+		move3 = Vector3.ZERO # knocked silly / frozen solid: no steering
 	if move3.length_squared() > 1.0:
 		move3 = move3.normalized()
 
-	var charge_edge := input.charge and not _prev_charge_held
+	var charge_edge := input.charge and not _prev_charge_held and frozen_left <= 0.0
 	_prev_charge_held = input.charge
 
 	if charging:
@@ -77,9 +92,55 @@ func sim_tick(input: PlayerInput, dt: float) -> void:
 	else:
 		velocity.y -= Tuning.GRAVITY * dt
 
+	var pre_move_speed := Vector2(velocity.x, velocity.z).length()
 	move_and_slide()
-	_resolve_contacts(dt)
+	_resolve_contacts(dt, pre_move_speed)
 	rotation.y = atan2(-facing.x, -facing.z)
+
+	var frozen := frozen_left > 0.0
+	if frozen != _was_frozen:
+		_was_frozen = frozen
+		set_frozen_visual(frozen)
+
+
+func apply_grow() -> void:
+	power_mult = Tuning.GROW_POWER
+	knockback_mult = Tuning.GROW_KNOCKBACK_RESIST
+	visual_scale = Tuning.GROW_SCALE
+	effect_left = Tuning.POWERUP_EFFECT_TIME
+	set_visual_scale(visual_scale)
+
+
+func apply_shrink() -> void:
+	power_mult = Tuning.SHRINK_POWER
+	knockback_mult = Tuning.SHRINK_KNOCKBACK
+	visual_scale = Tuning.SHRINK_SCALE
+	effect_left = Tuning.POWERUP_EFFECT_TIME
+	set_visual_scale(visual_scale)
+
+
+func _clear_size_effect() -> void:
+	power_mult = 1.0
+	knockback_mult = 1.0
+	visual_scale = 1.0
+	set_visual_scale(1.0)
+
+
+## Mesh-only scale (collision shape stays constant — the size effect is a stat
+## change with a visual tell, not a hitbox change). Also used by puppets.
+func set_visual_scale(s: float) -> void:
+	_mesh.scale = Vector3.ONE * s
+	_nose.scale = Vector3.ONE * s
+	_nose.position = Vector3(0, 0.35, -0.45) * s
+
+
+## Ice tint while frozen. Also used by puppets (driven from snapshot flags).
+func set_frozen_visual(frozen: bool) -> void:
+	var mat := _mesh.material_override as StandardMaterial3D
+	if mat == null:
+		return
+	mat.albedo_color = mat.albedo_color.lerp(Color(0.6, 0.85, 1.0), 0.7) if frozen \
+		else _base_color
 
 
 ## Client-side visual stand-in: no physics, no collisions; the ClientReplica
@@ -117,15 +178,37 @@ func _end_charge(momentum_keep: float) -> void:
 	velocity.z = charge_dir.z * Tuning.CHARGE_SPEED * momentum_keep
 
 
-func _resolve_contacts(dt: float) -> void:
+func _resolve_contacts(dt: float, pre_move_speed: float) -> void:
 	for i in get_slide_collision_count():
 		var other := get_slide_collision(i).get_collider()
+		if other is StaticBody3D and other.has_meta("ice_block_index"):
+			if charging and not _hit_landed:
+				# Smashing a block spends the charge: brake hard, no recoil.
+				other.get_meta("ice_block_ring").smash(other.get_meta("ice_block_index"))
+				_hit_landed = true
+				_end_charge(0.0)
+				velocity.x = charge_dir.x * Tuning.CHARGE_SPEED * Tuning.BLOCK_SMASH_BRAKE
+				velocity.z = charge_dir.z * Tuning.CHARGE_SPEED * Tuning.BLOCK_SMASH_BRAKE
+			elif pre_move_speed > Tuning.BLOCK_BREAK_SPEED:
+				# Slammed into the wall hard (knockback victim): crash through.
+				# Judged on pre-move speed — move_and_slide has already bled
+				# the velocity along the wall by the time we get here. Carry
+				# the remaining momentum through the opening (along the inverse
+				# collision normal), not along the deflected slide direction.
+				other.get_meta("ice_block_ring").smash(other.get_meta("ice_block_index"))
+				var through := -get_slide_collision(i).get_normal()
+				through.y = 0.0
+				through = through.normalized()
+				velocity.x = through.x * pre_move_speed * Tuning.BLOCK_ABSORB
+				velocity.z = through.z * pre_move_speed * Tuning.BLOCK_ABSORB
+			continue
 		if not (other is SimPlayer) or not other.alive:
 			continue
 		if charging and not _hit_landed:
 			_hit_landed = true
-			other.velocity.x += charge_dir.x * stats.push_power
-			other.velocity.z += charge_dir.z * stats.push_power
+			var impulse: float = stats.push_power * power_mult * other.knockback_mult
+			other.velocity.x += charge_dir.x * impulse
+			other.velocity.z += charge_dir.z * impulse
 			other.velocity.y += Tuning.HIT_POP
 			other.stagger_left = Tuning.HIT_STAGGER
 			_end_charge(0.0)
