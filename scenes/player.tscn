@@ -1,0 +1,27 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/sim/sim_player.gd" id="1_script"]
+
+[sub_resource type="CapsuleShape3D" id="shape_capsule"]
+radius = 0.4
+height = 1.6
+
+[sub_resource type="CapsuleMesh" id="mesh_capsule"]
+radius = 0.4
+height = 1.6
+
+[sub_resource type="BoxMesh" id="mesh_nose"]
+size = Vector3(0.2, 0.2, 0.35)
+
+[node name="Player" type="CharacterBody3D"]
+script = ExtResource("1_script")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("shape_capsule")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("mesh_capsule")
+
+[node name="Nose" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, -0.45)
+mesh = SubResource("mesh_nose")

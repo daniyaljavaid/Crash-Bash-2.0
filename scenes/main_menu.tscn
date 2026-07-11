@@ -1,0 +1,88 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_script"]
+
+[node name="MainMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_script")
+
+[node name="BG" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.043, 0.055, 0.11, 1)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBox" type="VBoxContainer" parent="Center"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="Title" type="Label" parent="Center/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 72
+text = "SHOVE KINGS"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="Center/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.6, 0.7, 0.85, 1)
+text = "ice-floe sumo — last one standing wins"
+horizontal_alignment = 1
+
+[node name="PlayersRow" type="HBoxContainer" parent="Center/VBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="PlayersLabel" type="Label" parent="Center/VBox/PlayersRow"]
+layout_mode = 2
+text = "Players (2-8)"
+
+[node name="PlayersSpin" type="SpinBox" parent="Center/VBox/PlayersRow"]
+layout_mode = 2
+min_value = 2.0
+max_value = 8.0
+value = 4.0
+rounded = true
+
+[node name="HumansRow" type="HBoxContainer" parent="Center/VBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="HumansLabel" type="Label" parent="Center/VBox/HumansRow"]
+layout_mode = 2
+text = "Humans (1-4)"
+
+[node name="HumansSpin" type="SpinBox" parent="Center/VBox/HumansRow"]
+layout_mode = 2
+min_value = 1.0
+max_value = 4.0
+value = 1.0
+rounded = true
+
+[node name="StartButton" type="Button" parent="Center/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "START MATCH"
+
+[node name="QuitButton" type="Button" parent="Center/VBox"]
+layout_mode = 2
+text = "Quit"
+
+[node name="Controls" type="Label" parent="Center/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.5, 0.58, 0.7, 1)
+text = "P1: WASD + Space   ·   P2: Arrows + Enter   ·   P3/P4: Gamepad stick + A   ·   ESC: pause / settings"
+horizontal_alignment = 1

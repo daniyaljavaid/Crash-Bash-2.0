@@ -1,0 +1,67 @@
+extends Node
+## Autoload "MatchConfig". Session state that must survive scene reloads:
+## match setup, win counts across rounds, video settings.
+
+const PLAYER_COLORS: Array[Color] = [
+	Color("e74c3c"), # red
+	Color("3498db"), # blue
+	Color("2ecc71"), # green
+	Color("f1c40f"), # yellow
+	Color("9b59b6"), # purple
+	Color("e67e22"), # orange
+	Color("1abcbc"), # cyan
+	Color("ff7ac8"), # pink
+]
+const COLOR_NAMES := ["RED", "BLUE", "GREEN", "YELLOW", "PURPLE", "ORANGE", "CYAN", "PINK"]
+
+var player_count := 4
+var human_count := 1
+var wins: Array[int] = []
+
+var vsync_enabled := true
+var fps_cap := 0 # 0 = uncapped
+
+
+func _ready() -> void:
+	_parse_cmdline()
+	if wins.size() != player_count:
+		_reset_wins()
+	apply_video_settings()
+
+
+func start_new_match(players: int, humans: int) -> void:
+	player_count = clampi(players, 2, 8)
+	human_count = clampi(humans, 1, mini(4, player_count))
+	_reset_wins()
+
+
+func record_win(slot: int) -> void:
+	if slot >= 0 and slot < wins.size():
+		wins[slot] += 1
+
+
+func player_label(slot: int) -> String:
+	var who := "P%d" % (slot + 1) if slot < human_count else "BOT"
+	return "%s %s (%s)" % [who, COLOR_NAMES[slot], CharacterStats.for_slot(slot)["name"]]
+
+
+func apply_video_settings() -> void:
+	DisplayServer.window_set_vsync_mode(
+		DisplayServer.VSYNC_ENABLED if vsync_enabled else DisplayServer.VSYNC_DISABLED)
+	Engine.max_fps = fps_cap
+
+
+func _reset_wins() -> void:
+	wins = []
+	for i in player_count:
+		wins.append(0)
+
+
+# Lets headless/CI runs configure a match without the menu, e.g.:
+#   godot --headless res://scenes/arena.tscn --quit-after 900 -- players=8 humans=0
+func _parse_cmdline() -> void:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("players="):
+			player_count = clampi(arg.get_slice("=", 1).to_int(), 2, 8)
+		elif arg.begins_with("humans="):
+			human_count = clampi(arg.get_slice("=", 1).to_int(), 0, 4)
