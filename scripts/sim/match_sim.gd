@@ -36,6 +36,8 @@ var boulders: BoulderManager = null
 var race: RaceManager = null
 var minigame := MatchConfig.Minigame.SHOVE
 
+var cover: Array = [] # {pos, half: Vector3, rot: float} — projectile-blocking obstacles
+
 var _started := false
 var _initial_radius := Tuning.ARENA_RADIUS_SMALL
 var _platform_shape: CylinderShape3D = null
@@ -50,10 +52,14 @@ func start_match(player_count: int, human_count: int,
 	minigame = MatchConfig.minigame
 	arena_radius = radius_for_player_count(player_count)
 	_initial_radius = arena_radius
-	var platform := build_platform(arena_radius)
+	var platform := build_platform(arena_radius,
+		shape_for_minigame(minigame), platform_color_for_minigame(minigame))
 	add_child(platform)
-	_platform_shape = platform.get_meta("shape")
-	_platform_mesh = platform.get_meta("mesh")
+	_platform_shape = platform.get_meta("shape") if platform.has_meta("shape") else null
+	_platform_mesh = platform.get_meta("mesh") if platform.has_meta("mesh") else null
+	cover = build_cover(self, arena_radius, minigame)
+	if minigame == MatchConfig.Minigame.GOAL:
+		build_rink_paint(self, arena_radius)
 	_build_kill_zone()
 	if MatchConfig.has_ice_blocks():
 		ice_ring = IceBlockRing.new()
@@ -224,10 +230,41 @@ static func radius_for_player_count(player_count: int) -> float:
 		+ maxf(0.0, player_count - 4) * Tuning.ARENA_RADIUS_PER_EXTRA_PLAYER
 
 
+enum PlatformShape { CIRCLE, SQUARE, RING }
+
+
+static func shape_for_minigame(mg: int) -> PlatformShape:
+	match mg:
+		MatchConfig.Minigame.TILE:
+			return PlatformShape.SQUARE
+		MatchConfig.Minigame.RACE:
+			return PlatformShape.RING
+		_:
+			return PlatformShape.CIRCLE
+
+
+static func platform_color_for_minigame(mg: int) -> Color:
+	match mg:
+		MatchConfig.Minigame.TILE:
+			return Color(0.5, 0.53, 0.66)  # slate courtyard under the tiles
+		MatchConfig.Minigame.SNOW:
+			return Color(0.9, 0.93, 0.98)  # fresh snowfield
+		MatchConfig.Minigame.GOAL:
+			return Color(0.82, 0.93, 1.0)  # polished rink
+		MatchConfig.Minigame.BOULDER:
+			return Color(0.6, 0.64, 0.7)   # scarred glacier quarry
+		MatchConfig.Minigame.RACE:
+			return Color(0.8, 0.86, 0.95)
+		_:
+			return Color(0.78, 0.88, 0.97)
+
+
 ## Melting variant: the platform shrinks linearly after a grace period.
 ## Collision and mesh follow arena_radius, so bots (which read arena_radius
 ## live) adapt automatically and players beyond the new edge just fall.
 func _melt_tick() -> void:
+	if _platform_shape == null:
+		return # square/ring arenas don't melt
 	var elapsed := Tuning.ROUND_TIME - time_left
 	var melt_t := clampf((elapsed - Tuning.MELT_START_DELAY) / Tuning.MELT_DURATION, 0.0, 1.0)
 	var target := _initial_radius * lerpf(1.0, Tuning.MELT_MIN_FRACTION, melt_t)
@@ -246,36 +283,68 @@ static func resize_platform(shape: CylinderShape3D, mesh: CylinderMesh, radius: 
 	mesh.bottom_radius = radius + 0.35
 
 
-## Also used by ClientReplica for the visual copy of the arena.
-static func build_platform(radius: float) -> StaticBody3D:
+## Also used by ClientReplica for the visual copy of the arena. The returned
+## node only carries "shape"/"mesh" meta for CIRCLE — the melting variant is a
+## no-op on square courtyards and ring tracks.
+static func build_platform(radius: float,
+		p_shape := PlatformShape.CIRCLE, color := Color(0.78, 0.88, 0.97)) -> Node3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = 0.15
+
+	if p_shape == PlatformShape.RING:
+		# CSG ring: outer disc minus a center hole — fall through the middle.
+		var outer := CSGCylinder3D.new()
+		outer.name = "Platform"
+		outer.radius = radius
+		outer.height = 2.0
+		outer.sides = 48
+		outer.material = mat
+		outer.use_collision = true
+		outer.collision_layer = 1
+		outer.collision_mask = 0
+		outer.position = Vector3(0, -1.0, 0)
+		var hole := CSGCylinder3D.new()
+		hole.radius = radius * 0.45
+		hole.height = 2.6
+		hole.sides = 32
+		hole.operation = CSGShape3D.OPERATION_SUBTRACTION
+		outer.add_child(hole)
+		return outer
+
 	var platform := StaticBody3D.new()
 	platform.name = "Platform"
 	platform.collision_layer = 1
 	platform.collision_mask = 0
-
 	var shape := CollisionShape3D.new()
-	var cyl := CylinderShape3D.new()
-	cyl.radius = radius
-	cyl.height = 2.0
-	shape.shape = cyl
-	shape.position = Vector3(0, -1.0, 0)
-	platform.add_child(shape)
-
 	var mesh_i := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = radius
-	cm.bottom_radius = radius + 0.35 # slight bevel
-	cm.height = 2.0
-	cm.radial_segments = 48
-	mesh_i.mesh = cm
+
+	if p_shape == PlatformShape.SQUARE:
+		var box := BoxShape3D.new()
+		box.size = Vector3(radius * 2.0, 2.0, radius * 2.0)
+		shape.shape = box
+		var bm := BoxMesh.new()
+		bm.size = box.size
+		mesh_i.mesh = bm
+	else:
+		var cyl := CylinderShape3D.new()
+		cyl.radius = radius
+		cyl.height = 2.0
+		shape.shape = cyl
+		var cm := CylinderMesh.new()
+		cm.top_radius = radius
+		cm.bottom_radius = radius + 0.35 # slight bevel
+		cm.height = 2.0
+		cm.radial_segments = 48
+		mesh_i.mesh = cm
+		platform.set_meta("shape", cyl)
+		platform.set_meta("mesh", cm)
+
+	shape.position = Vector3(0, -1.0, 0)
 	mesh_i.position = Vector3(0, -1.0, 0)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.78, 0.88, 0.97)
-	mat.roughness = 0.15
 	mesh_i.material_override = mat
+	platform.add_child(shape)
 	platform.add_child(mesh_i)
-	platform.set_meta("shape", cyl)
-	platform.set_meta("mesh", cm)
 	return platform
 
 
@@ -357,6 +426,81 @@ func _check_round_end() -> void:
 		else:
 			winner_slot = -1
 		_finish()
+
+
+## True when a projectile point is inside any cover obstacle.
+func point_in_cover(p: Vector3) -> bool:
+	for c in cover:
+		var local: Vector3 = (p - c["pos"]).rotated(Vector3.UP, -c["rot"])
+		if absf(local.x) <= c["half"].x and absf(local.z) <= c["half"].z \
+				and local.y >= 0.0 and local.y <= c["half"].y * 2.0:
+			return true
+	return false
+
+
+## Mode obstacles: ice walls to duck behind (Snow Brawl), rock pillars
+## (Boulder Brawl). Players collide with them; projectiles shatter on them.
+## Shared with ClientReplica; returns descriptors for the projectile check.
+static func build_cover(parent: Node3D, radius: float, mg: int) -> Array:
+	var specs: Array = []
+	var defs: Array = []
+	if mg == MatchConfig.Minigame.SNOW:
+		for i in 5:
+			var a := i * 2.399963
+			defs.append({
+				"pos": Vector3(sin(a), 0, cos(a)) * radius * 0.55,
+				"size": Vector3(2.6, 1.3, 0.5), "rot": a + PI * 0.5,
+				"color": Color(0.75, 0.86, 0.96)})
+	elif mg == MatchConfig.Minigame.BOULDER:
+		for i in 4:
+			var a := i * TAU / 4.0 + 0.6
+			defs.append({
+				"pos": Vector3(sin(a), 0, cos(a)) * radius * 0.5,
+				"size": Vector3(1.3, 1.7, 1.3), "rot": a,
+				"color": Color(0.45, 0.5, 0.56)})
+	for d in defs:
+		var body := StaticBody3D.new()
+		body.collision_layer = 1
+		body.collision_mask = 0
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = d["size"]
+		shape.shape = box
+		shape.position = Vector3(0, d["size"].y * 0.5, 0)
+		body.add_child(shape)
+		var mesh_i := MeshInstance3D.new()
+		var mesh := BoxMesh.new()
+		mesh.size = d["size"]
+		mesh_i.mesh = mesh
+		mesh_i.position = shape.position
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = d["color"]
+		mat.roughness = 0.35
+		mesh_i.material_override = mat
+		body.add_child(mesh_i)
+		body.position = d["pos"]
+		body.rotation.y = d["rot"]
+		parent.add_child(body)
+		specs.append({"pos": d["pos"], "half": d["size"] * 0.5, "rot": d["rot"]})
+	return specs
+
+
+## Cosmetic rink markings for Puck Panic. Shared with ClientReplica.
+static func build_rink_paint(parent: Node3D, radius: float) -> void:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.95, 0.97, 1.0)
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for r in [radius * 0.25, radius * 0.75]:
+		var ring := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = r - 0.06
+		torus.outer_radius = r + 0.06
+		torus.rings = 48
+		ring.mesh = torus
+		ring.material_override = mat
+		ring.position = Vector3(0, 0.03, 0)
+		ring.scale = Vector3(1, 0.02, 1) # squash the tube into a painted line
+		parent.add_child(ring)
 
 
 func _finish() -> void:

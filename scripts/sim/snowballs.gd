@@ -40,6 +40,9 @@ func tick(dt: float) -> void:
 		b["pos"] += step
 		b["traveled"] += SPEED * dt
 		b["node"].position = b["pos"]
+		if _sim.point_in_cover(b["pos"]):
+			_remove(id, b["pos"]) # splatted against an ice wall
+			continue
 		var hit := false
 		for p in _sim.players:
 			if p.slot == b["owner"] or not p.alive:

@@ -19,6 +19,7 @@ var _hit_stop_active := false
 
 func _ready() -> void:
 	$Sun.rotation_degrees = Vector3(-55.0, -35.0, 0.0)
+	_apply_mode_theme()
 	match Net.mode:
 		Net.Mode.OFFLINE:
 			_sim.start_match(MatchConfig.player_count, MatchConfig.human_count)
@@ -228,6 +229,54 @@ func _spawn_splash(at: Vector3, color := Color(0.55, 0.75, 0.95)) -> void:
 	add_child(p)
 	p.emitting = true
 	get_tree().create_timer(2.0).timeout.connect(p.queue_free)
+
+
+## Each minigame gets its own light/sky mood so arenas read as distinct
+## places, not rule-swaps on one board. Presentation only.
+func _apply_mode_theme() -> void:
+	var env: Environment = $WorldEnvironment.environment
+	var sky := env.sky.sky_material as ProceduralSkyMaterial
+	var sun: DirectionalLight3D = $Sun
+	match MatchConfig.minigame:
+		MatchConfig.Minigame.TILE: # dusk courtyard
+			sky.sky_top_color = Color(0.09, 0.04, 0.12)
+			sky.sky_horizon_color = Color(0.45, 0.22, 0.3)
+			sky.ground_horizon_color = Color(0.45, 0.22, 0.3)
+			sun.light_color = Color(1.0, 0.75, 0.6)
+			sun.light_energy = 1.1
+			env.fog_light_color = Color(0.24, 0.12, 0.18)
+		MatchConfig.Minigame.SNOW: # pale blizzard morning
+			sky.sky_top_color = Color(0.4, 0.46, 0.55)
+			sky.sky_horizon_color = Color(0.62, 0.66, 0.74)
+			sky.ground_horizon_color = Color(0.62, 0.66, 0.74)
+			sun.light_color = Color(0.95, 0.96, 1.0)
+			sun.light_energy = 0.9
+			env.ambient_light_energy = 0.8
+			env.fog_light_color = Color(0.5, 0.55, 0.62)
+			env.fog_density = 0.012
+		MatchConfig.Minigame.GOAL: # cold bright stadium
+			sky.sky_top_color = Color(0.03, 0.07, 0.12)
+			sky.sky_horizon_color = Color(0.15, 0.3, 0.42)
+			sky.ground_horizon_color = Color(0.15, 0.3, 0.42)
+			sun.light_color = Color(0.9, 0.97, 1.0)
+			sun.light_energy = 1.6
+			env.ambient_light_energy = 0.7
+		MatchConfig.Minigame.BOULDER: # dark quarry
+			sky.sky_top_color = Color(0.015, 0.03, 0.035)
+			sky.sky_horizon_color = Color(0.08, 0.16, 0.17)
+			sky.ground_horizon_color = Color(0.08, 0.16, 0.17)
+			sun.light_color = Color(0.7, 0.85, 0.82)
+			sun.light_energy = 0.85
+			env.fog_light_color = Color(0.06, 0.11, 0.12)
+		MatchConfig.Minigame.RACE: # gold dawn sprint
+			sky.sky_top_color = Color(0.1, 0.07, 0.18)
+			sky.sky_horizon_color = Color(0.85, 0.5, 0.25)
+			sky.ground_horizon_color = Color(0.85, 0.5, 0.25)
+			sun.light_color = Color(1.0, 0.85, 0.65)
+			sun.light_energy = 1.3
+			env.fog_light_color = Color(0.3, 0.18, 0.14)
+		_: # Shove Out keeps the classic arctic night
+			pass
 
 
 # Dev tool: `godot --path . res://scenes/arena.tscn -- screenshot=/tmp/shot.png

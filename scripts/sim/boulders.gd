@@ -124,6 +124,9 @@ func _step_flight(id: int, b: Dictionary, dt: float) -> void:
 	b["pos"] += b["vel"] * dt
 	b["traveled"] += b["vel"].length() * dt
 	b["node"].position = b["pos"]
+	if _sim.point_in_cover(b["pos"]):
+		_shatter(id, b) # smashed against a rock pillar
+		return
 	for p in _sim.players:
 		if p.slot == b["carrier"] or not p.alive:
 			continue

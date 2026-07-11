@@ -19,7 +19,7 @@ var _index_by_cell := {} # Vector2i grid coord -> tile index
 var _unowned_color := Color(0.62, 0.72, 0.85)
 
 
-func build(arena_radius: float, player_count: int) -> void:
+func build(arena_radius: float, player_count: int, square := true) -> void:
 	counts = []
 	for i in player_count:
 		counts.append(0)
@@ -27,8 +27,12 @@ func build(arena_radius: float, player_count: int) -> void:
 	for gx in range(-half, half + 1):
 		for gz in range(-half, half + 1):
 			var center := Vector2(gx * TILE_SIZE, gz * TILE_SIZE)
-			# Keep tiles whose far corner still sits on the platform.
-			if center.length() > arena_radius - TILE_SIZE * 0.55:
+			# Keep tiles that sit fully on the platform (square courtyard fills
+			# the corners; legacy circular clip kept for future stage variety).
+			if square:
+				if maxf(absf(center.x), absf(center.y)) > arena_radius - TILE_SIZE * 0.55:
+					continue
+			elif center.length() > arena_radius - TILE_SIZE * 0.55:
 				continue
 			var mesh_i := MeshInstance3D.new()
 			var mesh := BoxMesh.new()

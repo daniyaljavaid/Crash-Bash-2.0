@@ -51,10 +51,15 @@ var _pickups := {} # id -> Node3D
 
 func start(player_count: int) -> void:
 	arena_radius = MatchSim.radius_for_player_count(player_count)
-	var platform := MatchSim.build_platform(arena_radius)
+	var platform := MatchSim.build_platform(arena_radius,
+		MatchSim.shape_for_minigame(MatchConfig.minigame),
+		MatchSim.platform_color_for_minigame(MatchConfig.minigame))
 	add_child(platform)
-	_platform_shape = platform.get_meta("shape")
-	_platform_mesh = platform.get_meta("mesh")
+	_platform_shape = platform.get_meta("shape") if platform.has_meta("shape") else null
+	_platform_mesh = platform.get_meta("mesh") if platform.has_meta("mesh") else null
+	MatchSim.build_cover(self, arena_radius, MatchConfig.minigame)
+	if MatchConfig.minigame == MatchConfig.Minigame.GOAL:
+		MatchSim.build_rink_paint(self, arena_radius)
 	if MatchConfig.has_ice_blocks():
 		ice_ring = IceBlockRing.new()
 		add_child(ice_ring)
@@ -208,7 +213,7 @@ func _on_snapshot(p_tick: int, p_state: int, p_time_left: float,
 		state = p_state as MatchSim.State
 	time_left = p_time_left
 	countdown_left = p_countdown_left
-	if absf(p_radius - arena_radius) > 0.001: # melting variant
+	if absf(p_radius - arena_radius) > 0.001 and _platform_shape != null: # melting
 		arena_radius = p_radius
 		MatchSim.resize_platform(_platform_shape, _platform_mesh, arena_radius)
 	if ice_ring != null:
