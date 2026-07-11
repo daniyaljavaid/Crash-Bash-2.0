@@ -71,6 +71,18 @@ text = "Arena variant"
 [node name="VariantOption" type="OptionButton" parent="Center/VBox/VariantRow"]
 layout_mode = 2
 
+[node name="DifficultyRow" type="HBoxContainer" parent="Center/VBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="DifficultyLabel" type="Label" parent="Center/VBox/DifficultyRow"]
+layout_mode = 2
+text = "Bot difficulty"
+
+[node name="DifficultyOption" type="OptionButton" parent="Center/VBox/DifficultyRow"]
+layout_mode = 2
+
 [node name="TargetRow" type="HBoxContainer" parent="Center/VBox"]
 layout_mode = 2
 alignment = 1

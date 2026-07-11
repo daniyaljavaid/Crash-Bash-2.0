@@ -19,9 +19,13 @@ const SETTINGS_PATH := "user://settings.cfg"
 enum Variant { CLASSIC, ICE_BLOCKS, MELTING, POWER_UPS, CHAOS }
 const VARIANT_NAMES := ["Classic", "Ice Blocks", "Melting Platform", "Power-Ups", "Chaos (all)"]
 
+enum Difficulty { EASY, MEDIUM, HARD, EXPERT }
+const DIFFICULTY_NAMES := ["Easy", "Medium", "Hard", "Expert"]
+
 var player_count := 4
 var human_count := 1
 var variant := Variant.CLASSIC
+var difficulty := Difficulty.MEDIUM     # bot decision quality; never stat cheats
 var wins_target := 3                    # round wins needed to take the trophy
 var archetype_choices: Array[int] = []  # per slot; -1 = auto (cycle by slot)
 var wins: Array[int] = []
@@ -41,10 +45,12 @@ func _ready() -> void:
 
 
 func start_new_match(players: int, humans: int, p_variant := Variant.CLASSIC,
-		p_wins_target := 3, choices: Array[int] = []) -> void:
+		p_wins_target := 3, choices: Array[int] = [],
+		p_difficulty := Difficulty.MEDIUM) -> void:
 	player_count = clampi(players, 2, 8)
 	human_count = clampi(humans, 1, mini(4, player_count))
 	variant = p_variant
+	difficulty = p_difficulty
 	wins_target = clampi(p_wins_target, 1, 5)
 	archetype_choices = []
 	for i in player_count:
@@ -139,3 +145,5 @@ func _parse_cmdline() -> void:
 			human_count = clampi(arg.get_slice("=", 1).to_int(), 0, 4)
 		elif arg.begins_with("variant="):
 			variant = clampi(arg.get_slice("=", 1).to_int(), 0, Variant.size() - 1) as Variant
+		elif arg.begins_with("difficulty="):
+			difficulty = clampi(arg.get_slice("=", 1).to_int(), 0, Difficulty.size() - 1) as Difficulty
