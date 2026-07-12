@@ -34,6 +34,7 @@ var _base_color := Color.WHITE
 var _was_frozen := false
 var _anim_t := 0.0
 var _last_pos := Vector3.ZERO
+var _correction := Vector3.ZERO # prediction reconcile offset, decays visually
 
 @onready var _visual: Node3D = $Visual
 @onready var _body: MeshInstance3D = $Visual/Body
@@ -79,6 +80,17 @@ func _process(delta: float) -> void:
 	var waddle := sin(_anim_t) * clampf(speed / 8.0, 0.0, 1.0) * 0.18
 	_visual.rotation.z = waddle
 	_visual.rotation.x = -0.4 if charging else 0.0
+	if _correction.length_squared() > 0.00001:
+		_correction *= exp(-10.0 * delta)
+		_visual.position = _correction
+	elif _visual.position != Vector3.ZERO:
+		_visual.position = Vector3.ZERO
+
+
+## Prediction reconcile: shift the visual by the correction and let it decay,
+## so authoritative snaps read as a fast glide instead of a teleport.
+func add_correction_offset(err: Vector3) -> void:
+	_correction = (_correction + err).limit_length(2.5)
 
 
 ## One authoritative simulation step. dt is the fixed physics delta.

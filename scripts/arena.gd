@@ -8,7 +8,6 @@ extends Node3D
 ## Contains zero gameplay rules in every mode.
 
 var _view = null # MatchSim or ClientReplica — the HUD/camera read either
-var _client_input_source: PlayerController = null
 var _was_charging := {}
 var _hit_stop_active := false
 
@@ -32,7 +31,12 @@ func _ready() -> void:
 			add_child(replica)
 			replica.start(Net.slot_peers.size())
 			_view = replica
-			_client_input_source = _make_client_input_source()
+			# Client-side prediction: the local player runs on a predicted
+			# body (instant input response); everyone else interpolates.
+			if Net.my_slot >= 0:
+				var predictor := Predictor.new()
+				add_child(predictor)
+				predictor.setup(replica, _make_client_input_source())
 	if DisplayServer.get_name() != "headless":
 		var scenery := Scenery.new()
 		add_child(scenery)
@@ -80,16 +84,9 @@ func _process(_delta: float) -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	match Net.mode:
-		Net.Mode.SERVER:
-			if _sim.state != MatchSim.State.OVER:
-				Net.broadcast_snapshot(_sim)
-		Net.Mode.CLIENT:
-			if _client_input_source != null and _view.state == MatchSim.State.PLAYING \
-					and Net.my_slot >= 0 and Net.my_slot < _view.players.size():
-				var pi: PlayerInput = _client_input_source.get_player_input(
-					_view.players[Net.my_slot], _view)
-				Net.send_input(pi.move, pi.charge)
+	if Net.mode == Net.Mode.SERVER and _sim.state != MatchSim.State.OVER:
+		Net.broadcast_snapshot(_sim)
+	# Client input is collected and sent by the Predictor.
 
 
 ## Server-side controller per slot: host keyboard for peer 1 (listen server),

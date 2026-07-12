@@ -46,6 +46,9 @@ func _ready() -> void:
 	_rebuild_char_rows()
 	_ip_edit.text = MatchConfig.last_ip
 	_port_edit.text = str(MatchConfig.last_port)
+	if OS.has_feature("web"):
+		# Browsers can join but never host (no listening sockets).
+		$Center/VBox/NetButtons/HostButton.visible = false
 	$Center/VBox/StartButton.grab_focus()
 
 
@@ -139,7 +142,11 @@ func _bootstrap_dedicated_server() -> bool:
 			Net.autonext_seconds = arg.get_slice("=", 1).to_int()
 		elif arg.begins_with("target="):
 			Net.lobby_wins_target = clampi(arg.get_slice("=", 1).to_int(), 1, 5)
-	var err := Net.host(port, true)
+	var use_ws := false
+	for arg in OS.get_cmdline_user_args():
+		if arg == "ws=1":
+			use_ws = true # WebSocket transport: required for browser players
+	var err := Net.host(port, true, use_ws)
 	if err != OK:
 		printerr("[server] failed to bind port %d" % port)
 		get_tree().quit(1)

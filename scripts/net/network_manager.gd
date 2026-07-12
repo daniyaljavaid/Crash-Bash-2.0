@@ -11,7 +11,7 @@ extends Node
 
 signal lobby_updated
 signal match_started
-signal snapshot_received(tick: int, state: int, time_left: float, countdown_left: float, radius: float, block_mask: int, data: PackedFloat32Array, extra: PackedByteArray)
+signal snapshot_received(tick: int, state: int, time_left: float, countdown_left: float, radius: float, block_mask: int, data: PackedFloat32Array, extra: PackedByteArray, acked_seqs: PackedInt32Array)
 signal net_eliminated(slot: int, at: Vector3)
 signal net_round_over(winner_slot: int, wins: Array)
 signal net_block_destroyed(index: int, at: Vector3)
@@ -28,7 +28,7 @@ enum Mode { OFFLINE, SERVER, CLIENT }
 
 const DEFAULT_PORT := 9050
 const SNAPSHOT_EVERY_N_TICKS := 3      # 60 Hz sim -> 20 Hz snapshots
-const PLAYER_STRIDE := 7               # x, y, z, rot_y, stamina, flags, visual_scale
+const PLAYER_STRIDE := 9               # x, y, z, rot_y, stamina, flags, visual_scale, vx, vz
 const FLAG_ALIVE := 1
 const FLAG_CHARGING := 2
 const FLAG_FROZEN := 4
@@ -85,12 +85,29 @@ func is_server() -> bool:
 
 # --- session setup -----------------------------------------------------------
 
-func host(port: int, p_dedicated := false) -> Error:
+## use_ws hosts over WebSocket (TCP) so browser builds can connect. Browsers
+## cannot use ENet/UDP at all — a server that should accept web players must
+## be started with ws=1. Everything else in the stack is transport-agnostic.
+func host(port: int, p_dedicated := false, use_ws := false) -> Error:
+	var err: Error
+	if use_ws:
+		var ws := WebSocketMultiplayerPeer.new()
+		err = ws.create_server(port)
+		if err != OK:
+			return err
+		multiplayer.multiplayer_peer = ws
+		_finish_host_setup(p_dedicated, port)
+		return OK
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(port, 16)
+	err = peer.create_server(port, 16)
 	if err != OK:
 		return err
 	multiplayer.multiplayer_peer = peer
+	_finish_host_setup(p_dedicated, port)
+	return OK
+
+
+func _finish_host_setup(p_dedicated: bool, port: int) -> void:
 	mode = Mode.SERVER
 	dedicated = p_dedicated
 	current_port = port
@@ -99,15 +116,25 @@ func host(port: int, p_dedicated := false) -> Error:
 	_wins_by_identity = {}
 	if not dedicated:
 		lobby_peer_ids.append(1)
-	return OK
 
 
+## Web builds always join over WebSocket (the only transport a browser has);
+## desktop can opt in with a ws:// address.
 func join(ip: String, port: int) -> Error:
-	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_client(ip, port)
-	if err != OK:
-		return err
-	multiplayer.multiplayer_peer = peer
+	var err: Error
+	if OS.has_feature("web") or ip.begins_with("ws://") or ip.begins_with("wss://"):
+		var ws := WebSocketMultiplayerPeer.new()
+		var url := ip if ip.begins_with("ws") else "ws://%s:%d" % [ip, port]
+		err = ws.create_client(url)
+		if err != OK:
+			return err
+		multiplayer.multiplayer_peer = ws
+	else:
+		var peer := ENetMultiplayerPeer.new()
+		err = peer.create_client(ip, port)
+		if err != OK:
+			return err
+		multiplayer.multiplayer_peer = peer
 	mode = Mode.CLIENT
 	return OK
 
@@ -372,17 +399,18 @@ func round_finished_on_server(winner_slot: int) -> void:
 
 # --- gameplay: input up ------------------------------------------------------
 
-func send_input(move: Vector2, charge: bool) -> void:
-	_c2s_input.rpc_id(1, move, charge)
+func send_input(seq: int, move: Vector2, charge: bool) -> void:
+	_c2s_input.rpc_id(1, seq, move, charge)
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func _c2s_input(move: Vector2, charge: bool) -> void:
+func _c2s_input(seq: int, move: Vector2, charge: bool) -> void:
 	if not is_server():
 		return
 	latest_inputs[multiplayer.get_remote_sender_id()] = {
 		"move": move.limit_length(1.0),
 		"charge": charge,
+		"seq": seq,
 		"tick": Engine.get_physics_frames(),
 	}
 
@@ -424,6 +452,15 @@ func broadcast_snapshot(sim: MatchSim) -> void:
 			flags |= FLAG_FROZEN
 		data[base + 5] = float(flags)
 		data[base + 6] = p.visual_scale
+		data[base + 7] = p.velocity.x
+		data[base + 8] = p.velocity.z
+	# Last input sequence applied per slot — clients rewind/replay from here.
+	var acked := PackedInt32Array()
+	acked.resize(sim.players.size())
+	for i in sim.players.size():
+		var peer: int = slot_peers[i] if i < slot_peers.size() else 0
+		if peer > 1 and latest_inputs.has(peer):
+			acked[i] = latest_inputs[peer].get("seq", 0)
 	var mask: int = sim.ice_ring.alive_mask if sim.ice_ring != null else 0
 	# `extra` carries mode-specific state: tile ownership bytes in Tile Rush,
 	# puck positions/velocities in Puck Panic.
@@ -437,14 +474,15 @@ func broadcast_snapshot(sim: MatchSim) -> void:
 	elif sim.race != null:
 		extra = sim.race.encode()
 	_s2c_snapshot.rpc(sim.tick, sim.state, sim.time_left, sim.countdown_left,
-		sim.arena_radius, mask, data, extra)
+		sim.arena_radius, mask, data, extra, acked)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _s2c_snapshot(tick: int, state: int, time_left: float, countdown_left: float,
 		radius: float, block_mask: int, data: PackedFloat32Array,
-		extra: PackedByteArray) -> void:
-	snapshot_received.emit(tick, state, time_left, countdown_left, radius, block_mask, data, extra)
+		extra: PackedByteArray, acked_seqs: PackedInt32Array) -> void:
+	snapshot_received.emit(tick, state, time_left, countdown_left, radius,
+		block_mask, data, extra, acked_seqs)
 
 
 func broadcast_eliminated(slot: int, at: Vector3) -> void:

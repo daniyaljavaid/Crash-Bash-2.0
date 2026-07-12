@@ -21,8 +21,23 @@ Original 3D arctic party game for Godot 4.4+, 2-8 players. Three minigames
 Arena variants (ice blocks / melting / power-ups / chaos) and bot difficulty
 apply to every minigame.
 
-Roadmap: 3-4 stages per minigame, 2v2 teams and handicap matches, client-side
-prediction, and polish (music, online names, character models).
+## Netcode
+
+- **Client-side prediction** — your own penguin simulates locally and responds
+  instantly; inputs are sequence-stamped, the server acks the last applied seq
+  in each snapshot, and the client rewinds + replays the rest. Corrections
+  decay visually; big ones (respawns) snap.
+- **Web build** — export the "Web" preset (`build/web/`), serve the folder
+  with any static file server (no special headers needed — threads disabled),
+  and players join from a browser. Browsers can only *join*, and only over
+  WebSocket: run the server with `ws=1`:
+  `./server --headless --server -- port=9050 players=8 bots=1 ws=1`
+  Desktop clients can also join a ws server (`ws://host:port` in the IP box)
+  so both platforms share one server. Note: WebSocket is TCP — snapshots lose
+  the unreliable channel, which is fine on decent connections.
+- **WAN**: use Tailscale IPs or forward the port (UDP for ENet, TCP for ws).
+
+Remaining polish backlog: music, online player names, character models.
 
 ## Milestone 5 — meta & polish
 

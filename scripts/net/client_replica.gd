@@ -201,7 +201,8 @@ func _on_powerup_collected(id: int, _type: int, _slot: int) -> void:
 
 func _on_snapshot(p_tick: int, p_state: int, p_time_left: float,
 		p_countdown_left: float, p_radius: float, p_block_mask: int,
-		data: PackedFloat32Array, extra: PackedByteArray) -> void:
+		data: PackedFloat32Array, extra: PackedByteArray,
+		_acked: PackedInt32Array) -> void:
 	if not _snaps.is_empty() and p_tick <= _snaps[-1]["tick"]:
 		return # late/duplicate packet
 	_snaps.append({"tick": p_tick, "data": data})
