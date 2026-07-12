@@ -16,6 +16,16 @@ func _ready() -> void:
 	_fps_opt.selected = maxi(FPS_OPTIONS.find(MatchConfig.fps_cap), 0)
 	_vsync_btn.button_pressed = MatchConfig.vsync_enabled
 	_vsync_btn.toggled.connect(_on_vsync_toggled)
+	var res_opt: OptionButton = $Center/Panel/VBox/ResRow/ResOption
+	for name in MatchConfig.RESOLUTION_NAMES:
+		res_opt.add_item(name)
+	res_opt.selected = clampi(MatchConfig.resolution_index, 0, MatchConfig.RESOLUTION_NAMES.size() - 1)
+	res_opt.item_selected.connect(func(i: int) -> void:
+		MatchConfig.resolution_index = i
+		MatchConfig.apply_video_settings())
+	# Phones/browsers own their window size.
+	$Center/Panel/VBox/ResRow.visible = not OS.has_feature("web") \
+		and not DisplayServer.is_touchscreen_available()
 	var music_btn: CheckButton = $Center/Panel/VBox/Music
 	music_btn.button_pressed = MatchConfig.music_on
 	music_btn.toggled.connect(func(on: bool) -> void:

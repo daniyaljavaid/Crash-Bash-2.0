@@ -40,6 +40,17 @@ layout_mode = 2
 button_pressed = true
 text = "Music"
 
+[node name="ResRow" type="HBoxContainer" parent="Center/Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ResLabel" type="Label" parent="Center/Panel/VBox/ResRow"]
+layout_mode = 2
+text = "Resolution"
+
+[node name="ResOption" type="OptionButton" parent="Center/Panel/VBox/ResRow"]
+layout_mode = 2
+
 [node name="FpsRow" type="HBoxContainer" parent="Center/Panel/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 10

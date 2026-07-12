@@ -39,9 +39,15 @@ var wins_target := 3                    # round wins needed to take the trophy
 var archetype_choices: Array[int] = []  # per slot; -1 = auto (cycle by slot)
 var wins: Array[int] = []
 
+const RESOLUTIONS: Array = [
+	Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080),
+	Vector2i(2560, 1440), Vector2i.ZERO] # ZERO = fullscreen
+const RESOLUTION_NAMES := ["1280 × 720", "1600 × 900", "1920 × 1080", "2560 × 1440", "Fullscreen"]
+
 var vsync_enabled := true
 var fps_cap := 0 # 0 = uncapped
 var music_on := true
+var resolution_index := 0
 var last_ip := "127.0.0.1"
 var last_port := 9050
 var player_name_local := ""            # shown to other players online
@@ -157,7 +163,27 @@ func apply_video_settings() -> void:
 	DisplayServer.window_set_vsync_mode(
 		DisplayServer.VSYNC_ENABLED if vsync_enabled else DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = fps_cap
+	apply_resolution()
 	save_settings()
+
+
+## Desktop only — phones and browsers own their window.
+func apply_resolution() -> void:
+	if DisplayServer.get_name() == "headless" or OS.has_feature("web") \
+			or DisplayServer.is_touchscreen_available():
+		return
+	var res: Vector2i = RESOLUTIONS[clampi(resolution_index, 0, RESOLUTIONS.size() - 1)]
+	if res == Vector2i.ZERO:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	else:
+		if DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN:
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		DisplayServer.window_set_size(res)
+		# Re-center on the current screen.
+		var screen := DisplayServer.window_get_current_screen()
+		var screen_pos := DisplayServer.screen_get_position(screen)
+		var screen_size := DisplayServer.screen_get_size(screen)
+		DisplayServer.window_set_position(screen_pos + (screen_size - res) / 2)
 
 
 func save_settings() -> void:
@@ -165,6 +191,7 @@ func save_settings() -> void:
 	cf.set_value("video", "vsync", vsync_enabled)
 	cf.set_value("video", "fps_cap", fps_cap)
 	cf.set_value("audio", "music", music_on)
+	cf.set_value("video", "resolution", resolution_index)
 	cf.set_value("net", "last_ip", last_ip)
 	cf.set_value("net", "last_port", last_port)
 	cf.set_value("net", "player_name", player_name_local)
@@ -178,6 +205,7 @@ func _load_settings() -> void:
 	vsync_enabled = cf.get_value("video", "vsync", true)
 	fps_cap = cf.get_value("video", "fps_cap", 0)
 	music_on = cf.get_value("audio", "music", true)
+	resolution_index = cf.get_value("video", "resolution", 0)
 	last_ip = cf.get_value("net", "last_ip", "127.0.0.1")
 	last_port = cf.get_value("net", "last_port", 9050)
 	player_name_local = cf.get_value("net", "player_name", "")
