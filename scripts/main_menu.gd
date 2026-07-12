@@ -197,8 +197,13 @@ func _bootstrap_auto_join() -> bool:
 			return true
 		if arg.begins_with("join="):
 			var addr := arg.get_slice("=", 1)
-			var ip := addr.get_slice(":", 0)
-			var port := addr.get_slice(":", 1).to_int() if ":" in addr else Net.DEFAULT_PORT
+			var ip := addr
+			var port := Net.DEFAULT_PORT
+			# ws:// URLs pass through whole; host:port pairs are split.
+			if not addr.begins_with("ws"):
+				ip = addr.get_slice(":", 0)
+				if ":" in addr:
+					port = addr.get_slice(":", 1).to_int()
 			var err := Net.join(ip, port)
 			if err != OK:
 				printerr("[client] failed to join %s" % addr)
