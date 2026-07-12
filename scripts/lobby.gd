@@ -91,7 +91,9 @@ func _refresh() -> void:
 	for i in Net.lobby_peer_ids.size():
 		var peer: int = Net.lobby_peer_ids[i]
 		var row := Label.new()
-		var name_text := "Host" if peer == 1 else "Player (peer %d)" % peer
+		var name_text: String = Net.peer_names.get(peer, "")
+		if name_text == "":
+			name_text = "Host" if peer == 1 else "Player (peer %d)" % peer
 		if peer == me:
 			name_text += "  — you"
 		if peer == Net.leader_peer():

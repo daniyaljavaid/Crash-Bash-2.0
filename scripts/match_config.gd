@@ -41,8 +41,11 @@ var wins: Array[int] = []
 
 var vsync_enabled := true
 var fps_cap := 0 # 0 = uncapped
+var music_on := true
 var last_ip := "127.0.0.1"
 var last_port := 9050
+var player_name_local := ""            # shown to other players online
+var slot_names: Array = []             # per-slot display names, set at match start
 
 
 func _ready() -> void:
@@ -129,13 +132,18 @@ func record_win(slot: int) -> void:
 
 func player_label(slot: int) -> String:
 	var who: String
+	var custom := ""
+	if slot < slot_names.size() and str(slot_names[slot]) != "":
+		custom = str(slot_names[slot])
 	if Net.is_online():
 		if slot == Net.my_slot:
-			who = "YOU"
+			who = custom if custom != "" else "YOU"
 		elif Net.slot_is_human(slot):
-			who = "P%d" % (slot + 1)
+			who = custom if custom != "" else "P%d" % (slot + 1)
 		else:
 			who = "BOT"
+	elif slot == 0 and player_name_local != "":
+		who = player_name_local
 	else:
 		who = "P%d" % (slot + 1) if slot < human_count else "BOT"
 	var team_tag := ""
@@ -156,8 +164,10 @@ func save_settings() -> void:
 	var cf := ConfigFile.new()
 	cf.set_value("video", "vsync", vsync_enabled)
 	cf.set_value("video", "fps_cap", fps_cap)
+	cf.set_value("audio", "music", music_on)
 	cf.set_value("net", "last_ip", last_ip)
 	cf.set_value("net", "last_port", last_port)
+	cf.set_value("net", "player_name", player_name_local)
 	cf.save(SETTINGS_PATH)
 
 
@@ -167,8 +177,10 @@ func _load_settings() -> void:
 		return
 	vsync_enabled = cf.get_value("video", "vsync", true)
 	fps_cap = cf.get_value("video", "fps_cap", 0)
+	music_on = cf.get_value("audio", "music", true)
 	last_ip = cf.get_value("net", "last_ip", "127.0.0.1")
 	last_port = cf.get_value("net", "last_port", 9050)
+	player_name_local = cf.get_value("net", "player_name", "")
 
 
 func _reset_wins() -> void:

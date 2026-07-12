@@ -35,6 +35,7 @@ var _was_frozen := false
 var _anim_t := 0.0
 var _last_pos := Vector3.ZERO
 var _correction := Vector3.ZERO # prediction reconcile offset, decays visually
+var _archetype_scale := Vector3.ONE
 
 @onready var _visual: Node3D = $Visual
 @onready var _body: MeshInstance3D = $Visual/Body
@@ -60,6 +61,56 @@ func setup(p_slot: int, p_stats: Dictionary, color: Color) -> void:
 	$Visual/Beak.material_override = orange
 	$Visual/FootL.material_override = orange
 	$Visual/FootR.material_override = orange
+	_apply_archetype_look()
+
+
+## Silhouette + hat per archetype so builds read at a glance without models:
+## Heavy is broad with a dark headband, Bruiser has an angry brow, Trickster
+## is slim with an antenna bobble, Balanced stays clean.
+func _apply_archetype_look() -> void:
+	match stats.get("name", ""):
+		"Heavy":
+			_archetype_scale = Vector3(1.18, 0.95, 1.18)
+			var band := MeshInstance3D.new()
+			var torus := TorusMesh.new()
+			torus.inner_radius = 0.34
+			torus.outer_radius = 0.46
+			band.mesh = torus
+			band.material_override = _flat(Color(0.15, 0.15, 0.2))
+			band.scale = Vector3(1, 0.5, 1)
+			band.position = Vector3(0, 0.32, 0)
+			_visual.add_child(band)
+		"Bruiser":
+			_archetype_scale = Vector3(1.08, 1.0, 1.08)
+			for side in [-1.0, 1.0]:
+				var brow := MeshInstance3D.new()
+				var mesh := BoxMesh.new()
+				mesh.size = Vector3(0.16, 0.05, 0.06)
+				brow.mesh = mesh
+				brow.material_override = _flat(Color(0.1, 0.1, 0.12))
+				brow.position = Vector3(side * 0.16, 0.32, -0.36)
+				brow.rotation.z = -side * 0.35 # angled: permanently unimpressed
+				_visual.add_child(brow)
+		"Trickster":
+			_archetype_scale = Vector3(0.88, 1.08, 0.88)
+			var stem := MeshInstance3D.new()
+			var cyl := CylinderMesh.new()
+			cyl.top_radius = 0.02
+			cyl.bottom_radius = 0.02
+			cyl.height = 0.3
+			stem.mesh = cyl
+			stem.material_override = _flat(Color(0.2, 0.2, 0.25))
+			stem.position = Vector3(0, 0.6, 0)
+			_visual.add_child(stem)
+			var bobble := MeshInstance3D.new()
+			var s := SphereMesh.new()
+			s.radius = 0.07
+			s.height = 0.14
+			bobble.mesh = s
+			bobble.material_override = _flat(_base_color.lightened(0.4))
+			bobble.position = Vector3(0, 0.78, 0)
+			_visual.add_child(bobble)
+	_visual.scale = _archetype_scale
 
 
 static func _flat(color: Color) -> StandardMaterial3D:
@@ -206,8 +257,9 @@ func _clear_size_effect() -> void:
 
 ## Mesh-only scale (collision shape stays constant — the size effect is a stat
 ## change with a visual tell, not a hitbox change). Also used by puppets.
+## Composes with the archetype silhouette scale.
 func set_visual_scale(s: float) -> void:
-	_visual.scale = Vector3.ONE * s
+	_visual.scale = _archetype_scale * s
 
 
 ## Ice tint while frozen. Also used by puppets (driven from snapshot flags).

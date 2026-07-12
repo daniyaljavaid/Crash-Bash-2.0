@@ -19,6 +19,7 @@ var _hit_stop_active := false
 func _ready() -> void:
 	$Sun.rotation_degrees = Vector3(-55.0, -35.0, 0.0)
 	_apply_mode_theme()
+	SoundBank.play_music("game")
 	match Net.mode:
 		Net.Mode.OFFLINE:
 			_sim.start_match(MatchConfig.player_count, MatchConfig.human_count)

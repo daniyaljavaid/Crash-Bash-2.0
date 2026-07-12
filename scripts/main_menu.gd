@@ -13,6 +13,7 @@ extends Control
 @onready var _char_rows: VBoxContainer = $Center/VBox/CharRows
 
 var _char_opts: Array[OptionButton] = []
+@onready var _name_edit: LineEdit = $Center/VBox/NetRow/NameEdit
 @onready var _ip_edit: LineEdit = $Center/VBox/NetRow/IpEdit
 @onready var _port_edit: LineEdit = $Center/VBox/NetRow/PortEdit
 @onready var _error_label: Label = $Center/VBox/ErrorLabel
@@ -44,8 +45,10 @@ func _ready() -> void:
 	_target_spin.value = MatchConfig.wins_target
 	_humans_spin.value_changed.connect(func(_v: float) -> void: _rebuild_char_rows())
 	_rebuild_char_rows()
+	_name_edit.text = MatchConfig.player_name_local
 	_ip_edit.text = MatchConfig.last_ip
 	_port_edit.text = str(MatchConfig.last_port)
+	SoundBank.play_music("menu")
 	if OS.has_feature("web"):
 		# Browsers can join but never host (no listening sockets).
 		$Center/VBox/NetButtons/HostButton.visible = false
@@ -81,7 +84,14 @@ func _rebuild_char_rows() -> void:
 		_char_opts.append(opt)
 
 
+func _save_name() -> void:
+	MatchConfig.player_name_local = _name_edit.text.strip_edges().left(16)
+	MatchConfig.save_settings()
+
+
 func _on_start_local() -> void:
+	_save_name()
+	MatchConfig.slot_names = []
 	var choices: Array[int] = []
 	for opt in _char_opts:
 		choices.append(opt.selected - 1) # item 0 = Auto = -1
@@ -94,6 +104,7 @@ func _on_start_local() -> void:
 
 
 func _on_host() -> void:
+	_save_name()
 	var err := Net.host(_port())
 	if err != OK:
 		_error_label.text = "Could not host on port %d (in use?)" % _port()
@@ -105,6 +116,7 @@ func _on_host() -> void:
 
 
 func _on_join() -> void:
+	_save_name()
 	var ip := _ip_edit.text.strip_edges()
 	if ip.is_empty():
 		ip = "127.0.0.1"

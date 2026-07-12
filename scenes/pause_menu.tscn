@@ -35,6 +35,11 @@ layout_mode = 2
 button_pressed = true
 text = "V-Sync"
 
+[node name="Music" type="CheckButton" parent="Center/Panel/VBox"]
+layout_mode = 2
+button_pressed = true
+text = "Music"
+
 [node name="FpsRow" type="HBoxContainer" parent="Center/Panel/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 10

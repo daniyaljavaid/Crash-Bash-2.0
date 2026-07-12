@@ -51,6 +51,8 @@ var lobby_team_mode := 0               # MatchConfig.TeamMode
 
 # server-side: peer id -> archetype choice (-1 = auto)
 var _peer_archetypes := {}
+# peer id -> display name (server-side truth, mirrored to clients with lobby)
+var peer_names := {}
 var autostart_humans := 0              # auto-start once N humans joined (0 = off)
 var autonext_seconds := 0              # server: auto-start next round after N s (0 = manual)
 var current_port := DEFAULT_PORT
@@ -114,8 +116,10 @@ func _finish_host_setup(p_dedicated: bool, port: int) -> void:
 	lobby_peer_ids = []
 	waiting_peer_ids = []
 	_wins_by_identity = {}
+	peer_names = {}
 	if not dedicated:
 		lobby_peer_ids.append(1)
+		peer_names[1] = MatchConfig.player_name_local
 
 
 ## Web builds always join over WebSocket (the only transport a browser has);
@@ -186,12 +190,21 @@ func _on_peer_disconnected(id: int) -> void:
 	waiting_peer_ids.erase(id)
 	latest_inputs.erase(id)
 	_peer_archetypes.erase(id)
+	peer_names.erase(id)
 	_broadcast_lobby()
 	lobby_updated.emit()
 
 
 func _on_connected_to_server() -> void:
+	_c2s_hello.rpc_id(1, MatchConfig.player_name_local)
 	lobby_updated.emit()
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _c2s_hello(display_name: String) -> void:
+	if is_server():
+		peer_names[multiplayer.get_remote_sender_id()] = display_name.left(16)
+		_broadcast_lobby()
 
 
 func set_lobby_config(player_count: int, fill_bots: bool, variant: int,
@@ -227,7 +240,7 @@ func _broadcast_lobby() -> void:
 		_s2c_lobby_state.rpc(lobby_peer_ids, waiting_peer_ids,
 			lobby_player_count, lobby_fill_bots, lobby_variant, lobby_wins_target,
 			lobby_difficulty, lobby_minigame, lobby_stage, lobby_team_mode,
-			_round_active)
+			_round_active, peer_names)
 		lobby_updated.emit()
 		if autostart_humans > 0 and not _round_active \
 				and lobby_peer_ids.size() >= autostart_humans:
@@ -237,7 +250,9 @@ func _broadcast_lobby() -> void:
 @rpc("authority", "call_remote", "reliable")
 func _s2c_lobby_state(peer_ids: Array, waiting_ids: Array, player_count: int,
 		fill_bots: bool, variant: int, wins_target: int, difficulty: int,
-		minigame: int, stage: int, team_mode: int, in_progress: bool) -> void:
+		minigame: int, stage: int, team_mode: int, in_progress: bool,
+		names := {}) -> void:
+	peer_names = names
 	lobby_peer_ids.assign(peer_ids)
 	waiting_peer_ids.assign(waiting_ids)
 	lobby_player_count = player_count
@@ -310,16 +325,19 @@ func _try_start(requester: int) -> void:
 	# standings survive players joining/leaving between rounds.
 	var wins: Array[int] = []
 	var choices: Array[int] = []
+	var names: Array = []
 	for slot in count:
 		wins.append(_wins_by_identity.get(_slot_identity(slot), 0))
 		choices.append(_peer_archetypes.get(slot_peers[slot], -1) if slot_peers[slot] != 0 else -1)
+		names.append(peer_names.get(slot_peers[slot], "") if slot_peers[slot] != 0 else "")
+	MatchConfig.slot_names = names
 	MatchConfig.wins = wins
 	_round_active = true
 	match_in_progress = true
 	_s2c_match_start.rpc(slot_peers, wins, lobby_variant, lobby_wins_target,
-		choices, lobby_difficulty, lobby_minigame, lobby_stage, lobby_team_mode)
+		choices, lobby_difficulty, lobby_minigame, lobby_stage, lobby_team_mode, names)
 	_apply_match_start(slot_peers, wins, lobby_variant, lobby_wins_target,
-		choices, lobby_difficulty, lobby_minigame, lobby_stage, lobby_team_mode)
+		choices, lobby_difficulty, lobby_minigame, lobby_stage, lobby_team_mode, names)
 
 
 func _slot_identity(slot: int) -> String:
@@ -330,15 +348,16 @@ func _slot_identity(slot: int) -> String:
 @rpc("authority", "call_remote", "reliable")
 func _s2c_match_start(assignments: Array, wins: Array, variant: int,
 		wins_target: int, choices: Array, difficulty: int, minigame: int,
-		stage: int, team_mode: int) -> void:
+		stage: int, team_mode: int, names: Array = []) -> void:
 	_round_active = true
 	_apply_match_start(assignments, wins, variant, wins_target, choices,
-		difficulty, minigame, stage, team_mode)
+		difficulty, minigame, stage, team_mode, names)
 
 
 func _apply_match_start(assignments: Array, wins: Array, variant: int,
 		wins_target: int, choices: Array, difficulty: int, minigame: int,
-		stage: int, team_mode: int) -> void:
+		stage: int, team_mode: int, names: Array = []) -> void:
+	MatchConfig.slot_names = names
 	slot_peers.assign(assignments)
 	my_slot = slot_peers.find(multiplayer.get_unique_id())
 	match_in_progress = true

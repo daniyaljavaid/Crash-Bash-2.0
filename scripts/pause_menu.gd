@@ -16,6 +16,14 @@ func _ready() -> void:
 	_fps_opt.selected = maxi(FPS_OPTIONS.find(MatchConfig.fps_cap), 0)
 	_vsync_btn.button_pressed = MatchConfig.vsync_enabled
 	_vsync_btn.toggled.connect(_on_vsync_toggled)
+	var music_btn: CheckButton = $Center/Panel/VBox/Music
+	music_btn.button_pressed = MatchConfig.music_on
+	music_btn.toggled.connect(func(on: bool) -> void:
+		MatchConfig.music_on = on
+		MatchConfig.save_settings()
+		SoundBank.music_setting_changed()
+		if on:
+			SoundBank.play_music("game"))
 	_fps_opt.item_selected.connect(_on_fps_selected)
 	$Center/Panel/VBox/ResumeButton.pressed.connect(_toggle)
 	$Center/Panel/VBox/MenuButton.pressed.connect(_on_quit_to_menu)

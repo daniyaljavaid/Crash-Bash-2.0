@@ -9,9 +9,19 @@ const POOL_SIZE := 10
 var _streams := {}
 var _players: Array[AudioStreamPlayer] = []
 var _next := 0
+var _music_player: AudioStreamPlayer = null
+var _music_tracks := {}
+var _current_track := ""
 
 
 func _ready() -> void:
+	_music_player = AudioStreamPlayer.new()
+	_music_player.volume_db = -16.0
+	_music_player.process_mode = Node.PROCESS_MODE_ALWAYS # keeps playing in pause
+	add_child(_music_player)
+	if DisplayServer.get_name() != "headless":
+		_music_tracks["menu"] = _make_music(false)
+		_music_tracks["game"] = _make_music(true)
 	_streams["beep"] = _make_wav(_tone(660.0, 0.09))
 	_streams["go"] = _make_wav(_tone(880.0, 0.28))
 	_streams["hit"] = _make_wav(_hit())
@@ -26,6 +36,97 @@ func _ready() -> void:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
 		_players.append(p)
+
+
+func play_music(track: String) -> void:
+	if not MatchConfig.music_on or not _music_tracks.has(track):
+		return
+	if _current_track == track and _music_player.playing:
+		return
+	_current_track = track
+	_music_player.stream = _music_tracks[track]
+	_music_player.play()
+
+
+func stop_music() -> void:
+	_current_track = ""
+	_music_player.stop()
+
+
+func music_setting_changed() -> void:
+	if not MatchConfig.music_on:
+		stop_music()
+
+
+## A 16-second seamless chiptune loop, composed in code: Am-F-C-G, sine arp,
+## soft bass; the battle variant adds a kick/hat pulse and doubles the tempo
+## feel. No audio files anywhere in the project.
+func _make_music(battle: bool) -> AudioStreamWAV:
+	var bpm := 112.0 if battle else 66.0
+	var beat := 60.0 / bpm
+	var bars := 8
+	var total := beat * 4.0 * bars
+	var n := int(MIX_RATE * total)
+	var buf := PackedFloat32Array()
+	buf.resize(n)
+	# Chord roots (Hz): Am, F, C, G — two bars each.
+	var roots := [110.0, 87.31, 130.81, 98.0]
+	var minor := [true, false, false, false]
+	for bar in bars:
+		var root: float = roots[(bar / 2) % 4]
+		var is_minor: bool = minor[(bar / 2) % 4]
+		var third := root * (1.189 if is_minor else 1.26)  # minor/major third
+		var fifth := root * 1.498
+		var bar_start := bar * beat * 4.0
+		# Pad: whole-bar soft triad, one octave up.
+		_add_tone(buf, bar_start, beat * 4.0, root * 2.0, 0.05, 0.4)
+		_add_tone(buf, bar_start, beat * 4.0, third * 2.0, 0.04, 0.4)
+		_add_tone(buf, bar_start, beat * 4.0, fifth * 2.0, 0.04, 0.4)
+		# Arp: chord tones on eighths, two octaves up.
+		var arp := [root * 4.0, third * 4.0, fifth * 4.0, third * 4.0,
+			root * 4.0, fifth * 4.0, third * 4.0, fifth * 4.0]
+		for i in 8:
+			_add_tone(buf, bar_start + i * beat * 0.5, beat * 0.45, arp[i],
+				0.1 if battle else 0.07, 6.0)
+		# Bass: root on each beat.
+		for b in 4:
+			_add_tone(buf, bar_start + b * beat, beat * 0.9, root, 0.14, 3.0)
+		if battle:
+			for b in 4:
+				_add_thump(buf, bar_start + b * beat, 0.10)          # kick
+				_add_tick(buf, bar_start + (b + 0.5) * beat, 0.05)   # offbeat hat
+	# Gentle master clip.
+	for i in n:
+		buf[i] = clampf(buf[i], -0.95, 0.95)
+	var wav := _make_wav(buf)
+	wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	wav.loop_end = n
+	return wav
+
+
+func _add_tone(buf: PackedFloat32Array, start: float, dur: float, freq: float,
+		amp: float, decay: float) -> void:
+	var s := int(start * MIX_RATE)
+	var count := mini(int(dur * MIX_RATE), buf.size() - s)
+	for i in count:
+		var t := float(i) / MIX_RATE
+		var env := minf(t / 0.01, 1.0) * exp(-decay * t / dur)
+		buf[s + i] += sin(TAU * freq * t) * amp * env
+
+
+func _add_thump(buf: PackedFloat32Array, start: float, amp: float) -> void:
+	var s := int(start * MIX_RATE)
+	var count := mini(int(0.1 * MIX_RATE), buf.size() - s)
+	for i in count:
+		var t := float(i) / MIX_RATE
+		buf[s + i] += sin(TAU * 70.0 * t) * amp * exp(-30.0 * t)
+
+
+func _add_tick(buf: PackedFloat32Array, start: float, amp: float) -> void:
+	var s := int(start * MIX_RATE)
+	var count := mini(int(0.03 * MIX_RATE), buf.size() - s)
+	for i in count:
+		buf[s + i] += (fmod(i * 12.9898, 2.0) - 1.0) * amp * exp(-6.0 * float(i) / count)
 
 
 func play(sound: String, volume_db := -8.0) -> void:

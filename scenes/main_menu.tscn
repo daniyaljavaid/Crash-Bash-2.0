@@ -158,6 +158,16 @@ layout_mode = 2
 alignment = 1
 theme_override_constants/separation = 10
 
+[node name="NameLabel" type="Label" parent="Center/VBox/NetRow"]
+layout_mode = 2
+text = "Name"
+
+[node name="NameEdit" type="LineEdit" parent="Center/VBox/NetRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(120, 0)
+max_length = 16
+placeholder_text = "penguin"
+
 [node name="IpLabel" type="Label" parent="Center/VBox/NetRow"]
 layout_mode = 2
 text = "IP"
