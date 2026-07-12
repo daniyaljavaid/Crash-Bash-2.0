@@ -20,6 +20,10 @@ func _ready() -> void:
 	$Sun.rotation_degrees = Vector3(-55.0, -35.0, 0.0)
 	_apply_mode_theme()
 	SoundBank.play_music("game")
+	if DisplayServer.is_touchscreen_available() and not Net.dedicated:
+		var touch := TouchControls.new()
+		add_child(touch)
+		touch.pause_requested.connect(func() -> void: $PauseMenu._toggle())
 	match Net.mode:
 		Net.Mode.OFFLINE:
 			_sim.start_match(MatchConfig.player_count, MatchConfig.human_count)
@@ -110,7 +114,7 @@ func _server_controllers() -> Array[PlayerController]:
 func _make_client_input_source() -> PlayerController:
 	if "autopilot" in OS.get_cmdline_user_args():
 		return BotController.new()
-	return HumanController.new(HumanController.Scheme.KEYBOARD_WASD)
+	return HumanController.new(HumanController.local_scheme())
 
 
 func _on_player_eliminated(_slot: int, at: Vector3) -> void:

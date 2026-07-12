@@ -3,7 +3,12 @@ extends PlayerController
 ## Reads a local input device and converts it to a PlayerInput.
 ## The only gameplay-adjacent code allowed to touch the Input singleton.
 
-enum Scheme { KEYBOARD_WASD, KEYBOARD_ARROWS, GAMEPAD }
+enum Scheme { KEYBOARD_WASD, KEYBOARD_ARROWS, GAMEPAD, TOUCH }
+
+
+## The local player-1 device: touch overlay on touchscreens, WASD elsewhere.
+static func local_scheme() -> Scheme:
+	return Scheme.TOUCH if DisplayServer.is_touchscreen_available() else Scheme.KEYBOARD_WASD
 
 const GAMEPAD_DEADZONE := 0.25
 
@@ -31,4 +36,8 @@ func get_player_input(_player: SimPlayer, _sim) -> PlayerInput:
 				Input.get_joy_axis(device, JOY_AXIS_LEFT_Y))
 			pi.move = Vector2.ZERO if v.length() < GAMEPAD_DEADZONE else v.limit_length(1.0)
 			pi.charge = Input.is_joy_button_pressed(device, JOY_BUTTON_A)
+		Scheme.TOUCH:
+			if TouchControls.current != null:
+				pi.move = TouchControls.current.move
+				pi.charge = TouchControls.current.charge
 	return pi

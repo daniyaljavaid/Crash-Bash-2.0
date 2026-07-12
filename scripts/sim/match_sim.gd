@@ -221,7 +221,7 @@ func _make_controller(slot: int, human_count: int) -> PlayerController:
 	if slot >= human_count:
 		return BotController.new()
 	match slot:
-		0: return HumanController.new(HumanController.Scheme.KEYBOARD_WASD)
+		0: return HumanController.new(HumanController.local_scheme())
 		1: return HumanController.new(HumanController.Scheme.KEYBOARD_ARROWS)
 		_: return HumanController.new(HumanController.Scheme.GAMEPAD, slot - 2)
 

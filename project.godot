@@ -23,6 +23,9 @@ SoundBank="*res://scripts/sound_bank.gd"
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
 
 [physics]
 
@@ -33,4 +36,5 @@ common/physics_interpolation=true
 
 renderer/rendering_method="forward_plus"
 renderer/rendering_method.web="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true

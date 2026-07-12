@@ -39,11 +39,16 @@ func _ready() -> void:
 
 
 func play_music(track: String) -> void:
+	if "nomusic" in OS.get_cmdline_user_args(): # crash-bisection debug flag
+		return
 	if not MatchConfig.music_on or not _music_tracks.has(track):
 		return
 	if _current_track == track and _music_player.playing:
 		return
 	_current_track = track
+	# Always stop before swapping streams: reassigning a playing stream races
+	# the audio thread on Android (SIGSEGV in AudioTrack).
+	_music_player.stop()
 	_music_player.stream = _music_tracks[track]
 	_music_player.play()
 
@@ -98,6 +103,10 @@ func _make_music(battle: bool) -> AudioStreamWAV:
 	# Gentle master clip.
 	for i in n:
 		buf[i] = clampf(buf[i], -0.95, 0.95)
+	# Silence padding past the loop point: the resampler reads a few frames
+	# ahead when interpolating across the loop, and on Android the buffer can
+	# end flush against an unmapped page — SIGSEGV in the AudioTrack thread.
+	buf.resize(n + 512)
 	var wav := _make_wav(buf)
 	wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	wav.loop_end = n
@@ -130,10 +139,13 @@ func _add_tick(buf: PackedFloat32Array, start: float, amp: float) -> void:
 
 
 func play(sound: String, volume_db := -8.0) -> void:
+	if "nosfx" in OS.get_cmdline_user_args(): # crash-bisection debug flag
+		return
 	if not _streams.has(sound):
 		return
 	var p := _players[_next]
 	_next = (_next + 1) % _players.size()
+	p.stop() # see play_music: never swap a stream mid-playback
 	p.stream = _streams[sound]
 	p.volume_db = volume_db
 	p.play()
