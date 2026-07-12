@@ -186,7 +186,14 @@ func _hit_stop() -> void:
 func _on_round_ended(winner_slot: int) -> void:
 	if Net.mode == Net.Mode.CLIENT:
 		return # wins arrive replicated with the round-over event
-	MatchConfig.record_win(winner_slot)
+	# Team rounds credit every member of the winning team.
+	var winner_team := MatchConfig.team_of(winner_slot) if winner_slot >= 0 else -1
+	if winner_team >= 0:
+		for i in MatchConfig.player_count:
+			if MatchConfig.team_of(i) == winner_team:
+				MatchConfig.record_win(i)
+	else:
+		MatchConfig.record_win(winner_slot)
 	if Net.is_server():
 		Net.broadcast_round_over(winner_slot, MatchConfig.wins)
 		Net.round_finished_on_server(winner_slot)

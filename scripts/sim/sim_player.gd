@@ -9,6 +9,7 @@ signal throw_requested(dir: Vector3) # Snow Brawl: charge button throws instead
 
 var throw_mode := false # Snow Brawl/Boulder Brawl: charge input becomes a throw
 var carry_slow := false # Boulder Brawl: hauling a boulder slows you
+var team := -1          # -1 = free-for-all; teammates can't hurt each other
 var slot := 0
 var stats := {}          # one entry of CharacterStats.ARCHETYPES
 var stamina := Tuning.STAMINA_MAX
@@ -142,6 +143,32 @@ func sim_tick(input: PlayerInput, dt: float) -> void:
 		set_frozen_visual(frozen)
 
 
+func is_teammate(other: SimPlayer) -> bool:
+	return team >= 0 and other.team == team
+
+
+## Flat ring under the penguin marking its team (gold = A, silver = B).
+## Used by both the sim body and puppets.
+func set_team(p_team: int) -> void:
+	team = p_team
+	if team < 0:
+		return
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.5
+	torus.outer_radius = 0.62
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.85, 0.25) if team == 0 else Color(0.8, 0.85, 0.95)
+	mat.emission_enabled = true
+	mat.emission = mat.albedo_color * 0.5
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ring.material_override = mat
+	ring.mesh = torus
+	ring.scale = Vector3(1, 0.06, 1)
+	ring.position = Vector3(0, -0.76, 0)
+	add_child(ring)
+
+
 func apply_grow() -> void:
 	power_mult = Tuning.GROW_POWER
 	knockback_mult = Tuning.GROW_KNOCKBACK_RESIST
@@ -250,7 +277,7 @@ func _resolve_contacts(dt: float, pre_move_speed: float) -> void:
 			continue
 		if not (other is SimPlayer) or not other.alive:
 			continue
-		if charging and not _hit_landed:
+		if charging and not _hit_landed and not is_teammate(other):
 			_hit_landed = true
 			var impulse: float = stats.push_power * power_mult * other.knockback_mult
 			other.velocity.x += charge_dir.x * impulse

@@ -196,6 +196,7 @@ func _spawn_players(player_count: int, human_count: int,
 		var p: SimPlayer = PLAYER_SCENE.instantiate()
 		add_child(p)
 		p.setup(i, MatchConfig.archetype_for_slot(i), MatchConfig.PLAYER_COLORS[i])
+		p.set_team(MatchConfig.team_of(i))
 		p.landed_hit.connect(func(victim: SimPlayer) -> void:
 			player_hit.emit(p.slot, victim.slot, victim.global_position))
 		if minigame == MatchConfig.Minigame.SNOW:
@@ -399,16 +400,32 @@ func _check_round_end() -> void:
 	if minigame == MatchConfig.Minigame.TILE:
 		# No eliminations: the clock decides, most tiles wins.
 		if time_left <= 0.0:
-			winner_slot = tile_grid.leader()
+			winner_slot = _team_tile_leader() if _teams_active() else tile_grid.leader()
 			_finish()
 		return
 	if minigame == MatchConfig.Minigame.RACE:
 		var done := race.finished_slot()
 		if done >= 0:
-			winner_slot = done
+			winner_slot = done # their whole team is credited at round end
 			_finish()
 		elif time_left <= 0.0:
 			winner_slot = race.leader()
+			_finish()
+		return
+	if _teams_active():
+		# Round ends when a single team has everyone else in the water.
+		var alive_teams := {}
+		var representative: SimPlayer = null
+		for p in players:
+			if p.alive:
+				alive_teams[p.team] = true
+				representative = p
+		if alive_teams.size() <= 1:
+			winner_slot = representative.slot if representative != null else -1
+			_finish()
+		elif time_left <= 0.0:
+			winner_slot = pucks.leader() if pucks != null \
+				else (boulders.leader() if boulders != null else -1)
 			_finish()
 		return
 	var last_alive: SimPlayer = null
@@ -429,6 +446,40 @@ func _check_round_end() -> void:
 		else:
 			winner_slot = -1
 		_finish()
+
+
+func _teams_active() -> bool:
+	for p in players:
+		if p.team >= 0:
+			return true
+	return false
+
+
+## Winning team by summed tiles; representative = that team's top claimer.
+func _team_tile_leader() -> int:
+	var sums := {}
+	for slot in players.size():
+		var t: int = players[slot].team
+		sums[t] = sums.get(t, 0) + tile_grid.counts[slot]
+	var best_team := -1
+	var best_sum := -1
+	var tied := false
+	for t in sums:
+		if sums[t] > best_sum:
+			best_sum = sums[t]
+			best_team = t
+			tied = false
+		elif sums[t] == best_sum:
+			tied = true
+	if tied:
+		return -1
+	var rep := -1
+	var rep_tiles := -1
+	for slot in players.size():
+		if players[slot].team == best_team and tile_grid.counts[slot] > rep_tiles:
+			rep_tiles = tile_grid.counts[slot]
+			rep = slot
+	return rep
 
 
 ## True when a projectile point is inside any cover obstacle.

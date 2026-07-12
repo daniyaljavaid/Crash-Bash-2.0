@@ -8,6 +8,7 @@ extends Control
 @onready var _stage_opt: OptionButton = $Center/VBox/GameRow/StageOption
 @onready var _variant_opt: OptionButton = $Center/VBox/VariantRow/VariantOption
 @onready var _difficulty_opt: OptionButton = $Center/VBox/DifficultyRow/DifficultyOption
+@onready var _teams_opt: OptionButton = $Center/VBox/DifficultyRow/TeamsOption
 @onready var _target_spin: SpinBox = $Center/VBox/TargetRow/TargetSpin
 @onready var _char_rows: VBoxContainer = $Center/VBox/CharRows
 
@@ -37,6 +38,9 @@ func _ready() -> void:
 	for name in MatchConfig.DIFFICULTY_NAMES:
 		_difficulty_opt.add_item(name)
 	_difficulty_opt.selected = MatchConfig.difficulty
+	for name in MatchConfig.TEAM_MODE_NAMES:
+		_teams_opt.add_item(name)
+	_teams_opt.selected = MatchConfig.team_mode
 	_target_spin.value = MatchConfig.wins_target
 	_humans_spin.value_changed.connect(func(_v: float) -> void: _rebuild_char_rows())
 	_rebuild_char_rows()
@@ -81,7 +85,8 @@ func _on_start_local() -> void:
 	MatchConfig.start_new_match(int(_players_spin.value), int(_humans_spin.value),
 		_variant_opt.selected as MatchConfig.Variant, int(_target_spin.value), choices,
 		_difficulty_opt.selected as MatchConfig.Difficulty,
-		_game_opt.selected as MatchConfig.Minigame, _stage_opt.selected)
+		_game_opt.selected as MatchConfig.Minigame, _stage_opt.selected,
+		_teams_opt.selected as MatchConfig.TeamMode)
 	get_tree().change_scene_to_file("res://scenes/arena.tscn")
 
 
@@ -145,6 +150,7 @@ func _bootstrap_dedicated_server() -> bool:
 	Net.lobby_difficulty = MatchConfig.difficulty # honors `difficulty=` user arg
 	Net.lobby_minigame = MatchConfig.minigame # honors `game=` user arg
 	Net.lobby_stage = clampi(MatchConfig.stage, 0, Stages.count(MatchConfig.minigame) - 1)
+	Net.lobby_team_mode = MatchConfig.team_mode # honors `teams=` user arg
 	print("[server] dedicated server listening on port %d (players=%d bots=%s autostart=%d variant=%d)" % [
 		port, Net.lobby_player_count, fill_bots, Net.autostart_humans, Net.lobby_variant])
 	get_tree().change_scene_to_file.call_deferred("res://scenes/lobby.tscn")

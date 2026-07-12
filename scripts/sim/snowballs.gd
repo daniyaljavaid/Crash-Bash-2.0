@@ -44,8 +44,9 @@ func tick(dt: float) -> void:
 			_remove(id, b["pos"]) # splatted against an ice wall
 			continue
 		var hit := false
+		var owner: SimPlayer = _sim.players[b["owner"]]
 		for p in _sim.players:
-			if p.slot == b["owner"] or not p.alive:
+			if p.slot == b["owner"] or not p.alive or owner.is_teammate(p):
 				continue
 			var d: Vector3 = p.global_position + Vector3(0, 0.3, 0) - b["pos"]
 			if d.length() <= HIT_RADIUS:

@@ -109,7 +109,8 @@ func _on_player_eliminated(slot: int, _at: Vector3) -> void:
 func _on_round_ended(winner_slot: int) -> void:
 	_banner.visible = true
 	if winner_slot >= 0:
-		_banner.text = "%s WINS!" % MatchConfig.COLOR_NAMES[winner_slot]
+		_banner.text = ("%s'S TEAM WINS!" if MatchConfig.team_of(winner_slot) >= 0 \
+			else "%s WINS!") % MatchConfig.COLOR_NAMES[winner_slot]
 		_banner.add_theme_color_override("font_color", MatchConfig.PLAYER_COLORS[winner_slot])
 	else:
 		_banner.text = "TIE!"

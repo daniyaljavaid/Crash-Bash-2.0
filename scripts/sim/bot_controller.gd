@@ -260,7 +260,7 @@ func _pick_target(player: SimPlayer, sim, prof: Dictionary) -> SimPlayer:
 	var nearest: SimPlayer = null
 	var nearest_d := INF
 	for p in sim.players:
-		if p == player or not p.alive:
+		if p == player or not p.alive or player.is_teammate(p):
 			continue
 		var d := player.global_position.distance_squared_to(p.global_position)
 		if d < nearest_d:
@@ -272,7 +272,7 @@ func _pick_target(player: SimPlayer, sim, prof: Dictionary) -> SimPlayer:
 	var best_r := _target_radius(nearest)
 	var reach := sqrt(nearest_d) * 1.6 # only detour to victims not much farther
 	for p in sim.players:
-		if p == player or not p.alive:
+		if p == player or not p.alive or player.is_teammate(p):
 			continue
 		if player.global_position.distance_to(p.global_position) <= reach \
 				and _target_radius(p) > best_r:

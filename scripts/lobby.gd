@@ -10,6 +10,7 @@ extends Control
 @onready var _stage_opt: OptionButton = $Center/VBox/GameRow/StageOption
 @onready var _variant_opt: OptionButton = $Center/VBox/VariantRow/VariantOption
 @onready var _difficulty_opt: OptionButton = $Center/VBox/DifficultyRow/DifficultyOption
+@onready var _teams_opt: OptionButton = $Center/VBox/DifficultyRow/TeamsOption
 @onready var _target_spin: SpinBox = $Center/VBox/TargetRow/TargetSpin
 @onready var _char_opt: OptionButton = $Center/VBox/CharRow/CharOption
 @onready var _bots_check: CheckButton = $Center/VBox/BotsCheck
@@ -25,6 +26,8 @@ func _ready() -> void:
 		_variant_opt.add_item(name)
 	for name in MatchConfig.DIFFICULTY_NAMES:
 		_difficulty_opt.add_item(name)
+	for name in MatchConfig.TEAM_MODE_NAMES:
+		_teams_opt.add_item(name)
 	_char_opt.add_item("Auto")
 	for arch in CharacterStats.ARCHETYPES:
 		_char_opt.add_item(arch["name"])
@@ -37,8 +40,10 @@ func _ready() -> void:
 	_rebuild_stage_options(Net.lobby_minigame, Net.lobby_stage)
 	_variant_opt.selected = Net.lobby_variant
 	_difficulty_opt.selected = Net.lobby_difficulty
+	_teams_opt.selected = Net.lobby_team_mode
 	_target_spin.set_value_no_signal(Net.lobby_wins_target)
 	_char_opt.item_selected.connect(func(i: int) -> void: Net.set_my_archetype(i - 1))
+	_teams_opt.item_selected.connect(func(_i: int) -> void: _push_config())
 	_game_opt.item_selected.connect(func(i: int) -> void:
 		_rebuild_stage_options(i, 0)
 		_push_config())
@@ -59,7 +64,7 @@ func _push_config() -> void:
 	if Net.is_server():
 		Net.set_lobby_config(int(_players_spin.value), _bots_check.button_pressed,
 			_variant_opt.selected, int(_target_spin.value), _difficulty_opt.selected,
-			_game_opt.selected, _stage_opt.selected)
+			_game_opt.selected, _stage_opt.selected, _teams_opt.selected)
 
 
 func _rebuild_stage_options(mg: int, selected: int) -> void:
@@ -111,6 +116,7 @@ func _refresh() -> void:
 	_difficulty_opt.disabled = not editable
 	_target_spin.editable = editable
 	_stage_opt.disabled = not editable
+	_teams_opt.disabled = not editable
 	if not editable:
 		_players_spin.set_value_no_signal(Net.lobby_player_count)
 		_bots_check.set_pressed_no_signal(Net.lobby_fill_bots)
@@ -120,6 +126,7 @@ func _refresh() -> void:
 		_stage_opt.selected = Net.lobby_stage
 		_variant_opt.selected = Net.lobby_variant
 		_difficulty_opt.selected = Net.lobby_difficulty
+		_teams_opt.selected = Net.lobby_team_mode
 		_target_spin.set_value_no_signal(Net.lobby_wins_target)
 	_start_btn.visible = Net.i_am_leader()
 	_start_btn.disabled = Net.humans_connected() == 0 \

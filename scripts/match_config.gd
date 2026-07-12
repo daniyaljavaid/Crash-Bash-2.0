@@ -25,11 +25,15 @@ const DIFFICULTY_NAMES := ["Easy", "Medium", "Hard", "Expert"]
 enum Minigame { SHOVE, TILE, SNOW, GOAL, BOULDER, RACE }
 const MINIGAME_NAMES := ["Shove Out", "Tile Rush", "Snow Brawl", "Puck Panic", "Boulder Brawl", "Floe Dash"]
 
+enum TeamMode { FFA, ALTERNATING, HUMANS_VS_BOTS }
+const TEAM_MODE_NAMES := ["Free-for-All", "Two Teams", "Humans vs Bots"]
+
 var player_count := 4
 var human_count := 1
 var variant := Variant.CLASSIC
 var minigame := Minigame.SHOVE
 var stage := 0                          # per-minigame arena layout (see Stages)
+var team_mode := TeamMode.FFA
 var difficulty := Difficulty.MEDIUM     # bot decision quality; never stat cheats
 var wins_target := 3                    # round wins needed to take the trophy
 var archetype_choices: Array[int] = []  # per slot; -1 = auto (cycle by slot)
@@ -52,12 +56,13 @@ func _ready() -> void:
 func start_new_match(players: int, humans: int, p_variant := Variant.CLASSIC,
 		p_wins_target := 3, choices: Array[int] = [],
 		p_difficulty := Difficulty.MEDIUM, p_minigame := Minigame.SHOVE,
-		p_stage := 0) -> void:
+		p_stage := 0, p_team_mode := TeamMode.FFA) -> void:
 	player_count = clampi(players, 2, 8)
 	human_count = clampi(humans, 1, mini(4, player_count))
 	variant = p_variant
 	minigame = p_minigame
 	stage = clampi(p_stage, 0, Stages.count(minigame) - 1)
+	team_mode = p_team_mode
 	difficulty = p_difficulty
 	wins_target = clampi(p_wins_target, 1, 5)
 	archetype_choices = []
@@ -78,6 +83,31 @@ func match_winner() -> int:
 		if wins[i] >= wins_target:
 			return i
 	return -1
+
+
+## Team id for a slot (-1 = free-for-all). Humans-vs-Bots degrades to FFA when
+## the roster has no bots (or no humans) — otherwise one side starts empty and
+## the round would end instantly.
+func team_of(slot: int) -> int:
+	match team_mode:
+		TeamMode.ALTERNATING:
+			return slot % 2
+		TeamMode.HUMANS_VS_BOTS:
+			var humans := 0
+			for i in player_count:
+				if _slot_is_human(i):
+					humans += 1
+			if humans == 0 or humans == player_count:
+				return -1
+			return 0 if _slot_is_human(slot) else 1
+		_:
+			return -1
+
+
+func _slot_is_human(slot: int) -> bool:
+	if Net.is_online():
+		return Net.slot_is_human(slot)
+	return slot < human_count
 
 
 func has_ice_blocks() -> bool:
@@ -108,7 +138,11 @@ func player_label(slot: int) -> String:
 			who = "BOT"
 	else:
 		who = "P%d" % (slot + 1) if slot < human_count else "BOT"
-	return "%s %s (%s)" % [who, COLOR_NAMES[slot], archetype_for_slot(slot)["name"]]
+	var team_tag := ""
+	var t := team_of(slot)
+	if t >= 0:
+		team_tag = "[%s] " % ("A" if t == 0 else "B")
+	return "%s%s %s (%s)" % [team_tag, who, COLOR_NAMES[slot], archetype_for_slot(slot)["name"]]
 
 
 func apply_video_settings() -> void:
@@ -159,3 +193,5 @@ func _parse_cmdline() -> void:
 			minigame = clampi(arg.get_slice("=", 1).to_int(), 0, Minigame.size() - 1) as Minigame
 		elif arg.begins_with("stage="):
 			stage = maxi(arg.get_slice("=", 1).to_int(), 0)
+		elif arg.begins_with("teams="):
+			team_mode = clampi(arg.get_slice("=", 1).to_int(), 0, TeamMode.size() - 1) as TeamMode

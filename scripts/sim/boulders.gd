@@ -127,8 +127,9 @@ func _step_flight(id: int, b: Dictionary, dt: float) -> void:
 	if _sim.point_in_cover(b["pos"]):
 		_shatter(id, b) # smashed against a rock pillar
 		return
+	var thrower: SimPlayer = _sim.players[b["carrier"]]
 	for p in _sim.players:
-		if p.slot == b["carrier"] or not p.alive:
+		if p.slot == b["carrier"] or not p.alive or thrower.is_teammate(p):
 			continue
 		var d: Vector3 = p.global_position + Vector3(0, 0.5, 0) - b["pos"]
 		if d.length() <= HIT_RADIUS:

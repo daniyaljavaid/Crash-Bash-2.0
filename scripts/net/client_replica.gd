@@ -87,6 +87,7 @@ func start(player_count: int) -> void:
 		var p: SimPlayer = MatchSim.PLAYER_SCENE.instantiate()
 		add_child(p)
 		p.setup(i, MatchConfig.archetype_for_slot(i), MatchConfig.PLAYER_COLORS[i])
+		p.set_team(MatchConfig.team_of(i))
 		p.make_puppet()
 		var angle := TAU * float(i) / float(player_count)
 		var out := Vector3(sin(angle), 0.0, cos(angle))

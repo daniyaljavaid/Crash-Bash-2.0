@@ -95,6 +95,13 @@ layout_mode = 2
 alignment = 1
 theme_override_constants/separation = 12
 
+[node name="TeamsLabel" type="Label" parent="Center/VBox/DifficultyRow"]
+layout_mode = 2
+text = "Teams"
+
+[node name="TeamsOption" type="OptionButton" parent="Center/VBox/DifficultyRow"]
+layout_mode = 2
+
 [node name="DifficultyLabel" type="Label" parent="Center/VBox/DifficultyRow"]
 layout_mode = 2
 text = "Bot difficulty"

@@ -47,6 +47,7 @@ var lobby_wins_target := 3
 var lobby_difficulty := 1              # MatchConfig.Difficulty, default Medium
 var lobby_minigame := 0                # MatchConfig.Minigame
 var lobby_stage := 0                   # per-minigame arena layout
+var lobby_team_mode := 0               # MatchConfig.TeamMode
 
 # server-side: peer id -> archetype choice (-1 = auto)
 var _peer_archetypes := {}
@@ -167,7 +168,8 @@ func _on_connected_to_server() -> void:
 
 
 func set_lobby_config(player_count: int, fill_bots: bool, variant: int,
-		wins_target := 3, difficulty := 1, minigame := 0, stage := 0) -> void:
+		wins_target := 3, difficulty := 1, minigame := 0, stage := 0,
+		team_mode := 0) -> void:
 	lobby_player_count = clampi(player_count, 2, 8)
 	lobby_fill_bots = fill_bots
 	lobby_variant = clampi(variant, 0, MatchConfig.Variant.size() - 1)
@@ -175,6 +177,7 @@ func set_lobby_config(player_count: int, fill_bots: bool, variant: int,
 	lobby_difficulty = clampi(difficulty, 0, MatchConfig.Difficulty.size() - 1)
 	lobby_minigame = clampi(minigame, 0, MatchConfig.Minigame.size() - 1)
 	lobby_stage = clampi(stage, 0, Stages.count(lobby_minigame) - 1)
+	lobby_team_mode = clampi(team_mode, 0, MatchConfig.TeamMode.size() - 1)
 	_broadcast_lobby()
 
 
@@ -196,7 +199,8 @@ func _broadcast_lobby() -> void:
 	if is_server():
 		_s2c_lobby_state.rpc(lobby_peer_ids, waiting_peer_ids,
 			lobby_player_count, lobby_fill_bots, lobby_variant, lobby_wins_target,
-			lobby_difficulty, lobby_minigame, lobby_stage, _round_active)
+			lobby_difficulty, lobby_minigame, lobby_stage, lobby_team_mode,
+			_round_active)
 		lobby_updated.emit()
 		if autostart_humans > 0 and not _round_active \
 				and lobby_peer_ids.size() >= autostart_humans:
@@ -206,7 +210,7 @@ func _broadcast_lobby() -> void:
 @rpc("authority", "call_remote", "reliable")
 func _s2c_lobby_state(peer_ids: Array, waiting_ids: Array, player_count: int,
 		fill_bots: bool, variant: int, wins_target: int, difficulty: int,
-		minigame: int, stage: int, in_progress: bool) -> void:
+		minigame: int, stage: int, team_mode: int, in_progress: bool) -> void:
 	lobby_peer_ids.assign(peer_ids)
 	waiting_peer_ids.assign(waiting_ids)
 	lobby_player_count = player_count
@@ -216,6 +220,7 @@ func _s2c_lobby_state(peer_ids: Array, waiting_ids: Array, player_count: int,
 	lobby_difficulty = difficulty
 	lobby_minigame = minigame
 	lobby_stage = stage
+	lobby_team_mode = team_mode
 	match_in_progress = in_progress
 	lobby_updated.emit()
 
@@ -285,9 +290,9 @@ func _try_start(requester: int) -> void:
 	_round_active = true
 	match_in_progress = true
 	_s2c_match_start.rpc(slot_peers, wins, lobby_variant, lobby_wins_target,
-		choices, lobby_difficulty, lobby_minigame, lobby_stage)
+		choices, lobby_difficulty, lobby_minigame, lobby_stage, lobby_team_mode)
 	_apply_match_start(slot_peers, wins, lobby_variant, lobby_wins_target,
-		choices, lobby_difficulty, lobby_minigame, lobby_stage)
+		choices, lobby_difficulty, lobby_minigame, lobby_stage, lobby_team_mode)
 
 
 func _slot_identity(slot: int) -> String:
@@ -298,15 +303,15 @@ func _slot_identity(slot: int) -> String:
 @rpc("authority", "call_remote", "reliable")
 func _s2c_match_start(assignments: Array, wins: Array, variant: int,
 		wins_target: int, choices: Array, difficulty: int, minigame: int,
-		stage: int) -> void:
+		stage: int, team_mode: int) -> void:
 	_round_active = true
 	_apply_match_start(assignments, wins, variant, wins_target, choices,
-		difficulty, minigame, stage)
+		difficulty, minigame, stage, team_mode)
 
 
 func _apply_match_start(assignments: Array, wins: Array, variant: int,
 		wins_target: int, choices: Array, difficulty: int, minigame: int,
-		stage: int) -> void:
+		stage: int, team_mode: int) -> void:
 	slot_peers.assign(assignments)
 	my_slot = slot_peers.find(multiplayer.get_unique_id())
 	match_in_progress = true
@@ -319,6 +324,7 @@ func _apply_match_start(assignments: Array, wins: Array, variant: int,
 	MatchConfig.difficulty = difficulty as MatchConfig.Difficulty
 	MatchConfig.minigame = minigame as MatchConfig.Minigame
 	MatchConfig.stage = stage
+	MatchConfig.team_mode = team_mode as MatchConfig.TeamMode
 	MatchConfig.wins.assign(wins)
 	match_started.emit()
 	get_tree().change_scene_to_file("res://scenes/arena.tscn")
@@ -351,8 +357,12 @@ func _do_next_round(requester: int) -> void:
 ## against a roster-stable identity and re-opens the lobby for late joiners.
 func round_finished_on_server(winner_slot: int) -> void:
 	if winner_slot >= 0:
-		var key := _slot_identity(winner_slot)
-		_wins_by_identity[key] = _wins_by_identity.get(key, 0) + 1
+		var winner_team := MatchConfig.team_of(winner_slot)
+		for slot in slot_peers.size():
+			if slot == winner_slot \
+					or (winner_team >= 0 and MatchConfig.team_of(slot) == winner_team):
+				var key := _slot_identity(slot)
+				_wins_by_identity[key] = _wins_by_identity.get(key, 0) + 1
 	_round_active = false
 	_broadcast_lobby() # waiting clients learn the round ended
 	if autonext_seconds > 0:
