@@ -19,7 +19,8 @@ var _index_by_cell := {} # Vector2i grid coord -> tile index
 var _unowned_color := Color(0.62, 0.72, 0.85)
 
 
-func build(arena_radius: float, player_count: int, square := true) -> void:
+func build(arena_radius: float, player_count: int, square := true,
+		cover_specs: Array = []) -> void:
 	counts = []
 	for i in player_count:
 		counts.append(0)
@@ -33,6 +34,9 @@ func build(arena_radius: float, player_count: int, square := true) -> void:
 				if maxf(absf(center.x), absf(center.y)) > arena_radius - TILE_SIZE * 0.55:
 					continue
 			elif center.length() > arena_radius - TILE_SIZE * 0.55:
+				continue
+			# No tiles underneath stage obstacles — they'd be unclaimable.
+			if MatchSim.cover_contains(cover_specs, Vector3(center.x, 0.1, center.y)):
 				continue
 			var mesh_i := MeshInstance3D.new()
 			var mesh := BoxMesh.new()

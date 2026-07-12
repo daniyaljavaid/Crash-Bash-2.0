@@ -5,6 +5,7 @@ extends Control
 @onready var _players_spin: SpinBox = $Center/VBox/PlayersRow/PlayersSpin
 @onready var _humans_spin: SpinBox = $Center/VBox/HumansRow/HumansSpin
 @onready var _game_opt: OptionButton = $Center/VBox/GameRow/GameOption
+@onready var _stage_opt: OptionButton = $Center/VBox/GameRow/StageOption
 @onready var _variant_opt: OptionButton = $Center/VBox/VariantRow/VariantOption
 @onready var _difficulty_opt: OptionButton = $Center/VBox/DifficultyRow/DifficultyOption
 @onready var _target_spin: SpinBox = $Center/VBox/TargetRow/TargetSpin
@@ -28,6 +29,8 @@ func _ready() -> void:
 	for name in MatchConfig.MINIGAME_NAMES:
 		_game_opt.add_item(name)
 	_game_opt.selected = MatchConfig.minigame
+	_game_opt.item_selected.connect(func(_i: int) -> void: _rebuild_stage_options())
+	_rebuild_stage_options()
 	for name in MatchConfig.VARIANT_NAMES:
 		_variant_opt.add_item(name)
 	_variant_opt.selected = MatchConfig.variant
@@ -40,6 +43,14 @@ func _ready() -> void:
 	_ip_edit.text = MatchConfig.last_ip
 	_port_edit.text = str(MatchConfig.last_port)
 	$Center/VBox/StartButton.grab_focus()
+
+
+## Stage list depends on the selected minigame.
+func _rebuild_stage_options() -> void:
+	_stage_opt.clear()
+	for i in Stages.count(_game_opt.selected):
+		_stage_opt.add_item(Stages.stage_name(_game_opt.selected, i))
+	_stage_opt.selected = 0
 
 
 ## One character dropdown per local human (Auto + the four archetypes).
@@ -70,7 +81,7 @@ func _on_start_local() -> void:
 	MatchConfig.start_new_match(int(_players_spin.value), int(_humans_spin.value),
 		_variant_opt.selected as MatchConfig.Variant, int(_target_spin.value), choices,
 		_difficulty_opt.selected as MatchConfig.Difficulty,
-		_game_opt.selected as MatchConfig.Minigame)
+		_game_opt.selected as MatchConfig.Minigame, _stage_opt.selected)
 	get_tree().change_scene_to_file("res://scenes/arena.tscn")
 
 
@@ -133,6 +144,7 @@ func _bootstrap_dedicated_server() -> bool:
 	Net.lobby_variant = MatchConfig.variant # honors `variant=` user arg
 	Net.lobby_difficulty = MatchConfig.difficulty # honors `difficulty=` user arg
 	Net.lobby_minigame = MatchConfig.minigame # honors `game=` user arg
+	Net.lobby_stage = clampi(MatchConfig.stage, 0, Stages.count(MatchConfig.minigame) - 1)
 	print("[server] dedicated server listening on port %d (players=%d bots=%s autostart=%d variant=%d)" % [
 		port, Net.lobby_player_count, fill_bots, Net.autostart_humans, Net.lobby_variant])
 	get_tree().change_scene_to_file.call_deferred("res://scenes/lobby.tscn")

@@ -50,14 +50,16 @@ var _pickups := {} # id -> Node3D
 
 
 func start(player_count: int) -> void:
-	arena_radius = MatchSim.radius_for_player_count(player_count)
+	var stage := Stages.get_def(MatchConfig.minigame, MatchConfig.stage)
+	arena_radius = MatchSim.radius_for_player_count(player_count) * stage.get("size", 1.0)
 	var platform := MatchSim.build_platform(arena_radius,
 		MatchSim.shape_for_minigame(MatchConfig.minigame),
-		MatchSim.platform_color_for_minigame(MatchConfig.minigame))
+		MatchSim.platform_color_for_minigame(MatchConfig.minigame),
+		stage.get("hole", 0.45))
 	add_child(platform)
 	_platform_shape = platform.get_meta("shape") if platform.has_meta("shape") else null
 	_platform_mesh = platform.get_meta("mesh") if platform.has_meta("mesh") else null
-	MatchSim.build_cover(self, arena_radius, MatchConfig.minigame)
+	var cover_specs := MatchSim.build_cover(self, arena_radius, stage.get("cover", ""))
 	if MatchConfig.minigame == MatchConfig.Minigame.GOAL:
 		MatchSim.build_rink_paint(self, arena_radius)
 	if MatchConfig.has_ice_blocks():
@@ -69,7 +71,7 @@ func start(player_count: int) -> void:
 	if MatchConfig.minigame == MatchConfig.Minigame.TILE:
 		tile_grid = TileGrid.new()
 		add_child(tile_grid)
-		tile_grid.build(arena_radius, player_count)
+		tile_grid.build(arena_radius, player_count, true, cover_specs)
 	elif MatchConfig.minigame == MatchConfig.Minigame.GOAL:
 		_arc_markers = PuckManager.build_arc_markers(self, arena_radius, player_count)
 		for i in player_count:
@@ -78,7 +80,7 @@ func start(player_count: int) -> void:
 		for i in player_count:
 			_lives.append(BoulderManager.HP_START)
 	elif MatchConfig.minigame == MatchConfig.Minigame.RACE:
-		RaceManager.build_track_markers(self, arena_radius)
+		RaceManager.build_track_markers(self, arena_radius, RaceManager.lane_for_stage())
 		for i in player_count:
 			_race_progress.append(0.0)
 	for i in player_count:

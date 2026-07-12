@@ -9,23 +9,31 @@ extends Node3D
 signal lap_completed(slot: int, laps: int, at: Vector3) # reuses the lives event channel
 
 const LAPS_TO_WIN := 7
-const LANE_FRACTION := 0.72
+const LANE_FRACTION := 0.72 # fallback; real lane derives from the stage hole
 
 var progress: Array[float] = [] # accumulated radians, counterclockwise positive
 var laps: Array[int] = []
+var lane_fraction := LANE_FRACTION
 
 var _sim = null
 var _prev_angle: Array[float] = []
 
 
+## The lane runs on the ring's centerline: midway between hole edge and rim.
+static func lane_for_stage() -> float:
+	var hole: float = Stages.get_def(MatchConfig.Minigame.RACE, MatchConfig.stage).get("hole", 0.45)
+	return (hole + 1.0) * 0.5
+
+
 func setup(sim) -> void:
 	_sim = sim
+	lane_fraction = lane_for_stage()
 	for i in sim.players.size():
 		progress.append(0.0)
 		laps.append(0)
 		var pos: Vector3 = sim.players[i].global_position
 		_prev_angle.append(atan2(pos.x, pos.z))
-	build_track_markers(self, sim.arena_radius)
+	build_track_markers(self, sim.arena_radius, lane_fraction)
 
 
 func tick() -> void:
@@ -50,7 +58,7 @@ func respawn_position(fell_at: Vector3) -> Vector3:
 	var flat := Vector3(fell_at.x, 0.0, fell_at.z)
 	if flat.length() < 0.5:
 		flat = Vector3(0, 0, 1)
-	return flat.normalized() * _sim.arena_radius * LANE_FRACTION + Vector3(0, 1.0, 0)
+	return flat.normalized() * _sim.arena_radius * lane_fraction + Vector3(0, 1.0, 0)
 
 
 func finished_slot() -> int:
@@ -84,8 +92,9 @@ func encode() -> PackedByteArray:
 
 
 ## Lane dashes + a start gate. Shared with ClientReplica.
-static func build_track_markers(parent: Node3D, arena_radius: float) -> void:
-	var lane_r := arena_radius * LANE_FRACTION
+static func build_track_markers(parent: Node3D, arena_radius: float,
+		lane_frac := LANE_FRACTION) -> void:
+	var lane_r := arena_radius * lane_frac
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.85, 0.9, 1.0, 0.85)
 	for i in 24:

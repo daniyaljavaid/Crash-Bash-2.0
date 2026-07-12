@@ -83,6 +83,13 @@ text = "Minigame"
 [node name="GameOption" type="OptionButton" parent="Center/VBox/GameRow"]
 layout_mode = 2
 
+[node name="StageLabel" type="Label" parent="Center/VBox/GameRow"]
+layout_mode = 2
+text = "Stage"
+
+[node name="StageOption" type="OptionButton" parent="Center/VBox/GameRow"]
+layout_mode = 2
+
 [node name="VariantRow" type="HBoxContainer" parent="Center/VBox"]
 layout_mode = 2
 alignment = 1

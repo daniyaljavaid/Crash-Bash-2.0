@@ -46,6 +46,7 @@ var lobby_variant := 0                 # MatchConfig.Variant, host/leader-chosen
 var lobby_wins_target := 3
 var lobby_difficulty := 1              # MatchConfig.Difficulty, default Medium
 var lobby_minigame := 0                # MatchConfig.Minigame
+var lobby_stage := 0                   # per-minigame arena layout
 
 # server-side: peer id -> archetype choice (-1 = auto)
 var _peer_archetypes := {}
@@ -166,13 +167,14 @@ func _on_connected_to_server() -> void:
 
 
 func set_lobby_config(player_count: int, fill_bots: bool, variant: int,
-		wins_target := 3, difficulty := 1, minigame := 0) -> void:
+		wins_target := 3, difficulty := 1, minigame := 0, stage := 0) -> void:
 	lobby_player_count = clampi(player_count, 2, 8)
 	lobby_fill_bots = fill_bots
 	lobby_variant = clampi(variant, 0, MatchConfig.Variant.size() - 1)
 	lobby_wins_target = clampi(wins_target, 1, 5)
 	lobby_difficulty = clampi(difficulty, 0, MatchConfig.Difficulty.size() - 1)
 	lobby_minigame = clampi(minigame, 0, MatchConfig.Minigame.size() - 1)
+	lobby_stage = clampi(stage, 0, Stages.count(lobby_minigame) - 1)
 	_broadcast_lobby()
 
 
@@ -194,7 +196,7 @@ func _broadcast_lobby() -> void:
 	if is_server():
 		_s2c_lobby_state.rpc(lobby_peer_ids, waiting_peer_ids,
 			lobby_player_count, lobby_fill_bots, lobby_variant, lobby_wins_target,
-			lobby_difficulty, lobby_minigame, _round_active)
+			lobby_difficulty, lobby_minigame, lobby_stage, _round_active)
 		lobby_updated.emit()
 		if autostart_humans > 0 and not _round_active \
 				and lobby_peer_ids.size() >= autostart_humans:
@@ -204,7 +206,7 @@ func _broadcast_lobby() -> void:
 @rpc("authority", "call_remote", "reliable")
 func _s2c_lobby_state(peer_ids: Array, waiting_ids: Array, player_count: int,
 		fill_bots: bool, variant: int, wins_target: int, difficulty: int,
-		minigame: int, in_progress: bool) -> void:
+		minigame: int, stage: int, in_progress: bool) -> void:
 	lobby_peer_ids.assign(peer_ids)
 	waiting_peer_ids.assign(waiting_ids)
 	lobby_player_count = player_count
@@ -213,6 +215,7 @@ func _s2c_lobby_state(peer_ids: Array, waiting_ids: Array, player_count: int,
 	lobby_wins_target = wins_target
 	lobby_difficulty = difficulty
 	lobby_minigame = minigame
+	lobby_stage = stage
 	match_in_progress = in_progress
 	lobby_updated.emit()
 
@@ -282,9 +285,9 @@ func _try_start(requester: int) -> void:
 	_round_active = true
 	match_in_progress = true
 	_s2c_match_start.rpc(slot_peers, wins, lobby_variant, lobby_wins_target,
-		choices, lobby_difficulty, lobby_minigame)
+		choices, lobby_difficulty, lobby_minigame, lobby_stage)
 	_apply_match_start(slot_peers, wins, lobby_variant, lobby_wins_target,
-		choices, lobby_difficulty, lobby_minigame)
+		choices, lobby_difficulty, lobby_minigame, lobby_stage)
 
 
 func _slot_identity(slot: int) -> String:
@@ -294,24 +297,28 @@ func _slot_identity(slot: int) -> String:
 
 @rpc("authority", "call_remote", "reliable")
 func _s2c_match_start(assignments: Array, wins: Array, variant: int,
-		wins_target: int, choices: Array, difficulty: int, minigame: int) -> void:
+		wins_target: int, choices: Array, difficulty: int, minigame: int,
+		stage: int) -> void:
 	_round_active = true
-	_apply_match_start(assignments, wins, variant, wins_target, choices, difficulty, minigame)
+	_apply_match_start(assignments, wins, variant, wins_target, choices,
+		difficulty, minigame, stage)
 
 
 func _apply_match_start(assignments: Array, wins: Array, variant: int,
-		wins_target: int, choices: Array, difficulty: int, minigame: int) -> void:
+		wins_target: int, choices: Array, difficulty: int, minigame: int,
+		stage: int) -> void:
 	slot_peers.assign(assignments)
 	my_slot = slot_peers.find(multiplayer.get_unique_id())
 	match_in_progress = true
-	print("[net] match starting: slots=%s my_slot=%d wins=%s variant=%d target=%d choices=%s difficulty=%d game=%d" % [
-		str(assignments), my_slot, str(wins), variant, wins_target, str(choices), difficulty, minigame])
+	print("[net] match starting: slots=%s my_slot=%d wins=%s variant=%d target=%d choices=%s difficulty=%d game=%d stage=%d" % [
+		str(assignments), my_slot, str(wins), variant, wins_target, str(choices), difficulty, minigame, stage])
 	MatchConfig.player_count = slot_peers.size()
 	MatchConfig.variant = variant as MatchConfig.Variant
 	MatchConfig.wins_target = wins_target
 	MatchConfig.archetype_choices.assign(choices)
 	MatchConfig.difficulty = difficulty as MatchConfig.Difficulty
 	MatchConfig.minigame = minigame as MatchConfig.Minigame
+	MatchConfig.stage = stage
 	MatchConfig.wins.assign(wins)
 	match_started.emit()
 	get_tree().change_scene_to_file("res://scenes/arena.tscn")

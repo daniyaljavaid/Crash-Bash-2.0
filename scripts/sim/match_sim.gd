@@ -50,14 +50,16 @@ var _platform_mesh: CylinderMesh = null
 func start_match(player_count: int, human_count: int,
 		controllers_override: Array[PlayerController] = []) -> void:
 	minigame = MatchConfig.minigame
-	arena_radius = radius_for_player_count(player_count)
+	var stage := Stages.get_def(minigame, MatchConfig.stage)
+	arena_radius = radius_for_player_count(player_count) * stage.get("size", 1.0)
 	_initial_radius = arena_radius
 	var platform := build_platform(arena_radius,
-		shape_for_minigame(minigame), platform_color_for_minigame(minigame))
+		shape_for_minigame(minigame), platform_color_for_minigame(minigame),
+		stage.get("hole", 0.45))
 	add_child(platform)
 	_platform_shape = platform.get_meta("shape") if platform.has_meta("shape") else null
 	_platform_mesh = platform.get_meta("mesh") if platform.has_meta("mesh") else null
-	cover = build_cover(self, arena_radius, minigame)
+	cover = build_cover(self, arena_radius, stage.get("cover", ""))
 	if minigame == MatchConfig.Minigame.GOAL:
 		build_rink_paint(self, arena_radius)
 	_build_kill_zone()
@@ -78,7 +80,7 @@ func start_match(player_count: int, human_count: int,
 	if minigame == MatchConfig.Minigame.TILE:
 		tile_grid = TileGrid.new()
 		add_child(tile_grid)
-		tile_grid.build(arena_radius, player_count)
+		tile_grid.build(arena_radius, player_count, true, cover)
 	elif minigame == MatchConfig.Minigame.SNOW:
 		snowballs = SnowballManager.new()
 		add_child(snowballs)
@@ -287,7 +289,8 @@ static func resize_platform(shape: CylinderShape3D, mesh: CylinderMesh, radius: 
 ## node only carries "shape"/"mesh" meta for CIRCLE — the melting variant is a
 ## no-op on square courtyards and ring tracks.
 static func build_platform(radius: float,
-		p_shape := PlatformShape.CIRCLE, color := Color(0.78, 0.88, 0.97)) -> Node3D:
+		p_shape := PlatformShape.CIRCLE, color := Color(0.78, 0.88, 0.97),
+		hole_fraction := 0.45) -> Node3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	mat.roughness = 0.15
@@ -305,7 +308,7 @@ static func build_platform(radius: float,
 		outer.collision_mask = 0
 		outer.position = Vector3(0, -1.0, 0)
 		var hole := CSGCylinder3D.new()
-		hole.radius = radius * 0.45
+		hole.radius = radius * hole_fraction
 		hole.height = 2.6
 		hole.sides = 32
 		hole.operation = CSGShape3D.OPERATION_SUBTRACTION
@@ -430,7 +433,19 @@ func _check_round_end() -> void:
 
 ## True when a projectile point is inside any cover obstacle.
 func point_in_cover(p: Vector3) -> bool:
+	return cover_contains(cover, p)
+
+
+## The center of the obstacle containing p, or null (for bounce normals).
+func cover_center_at(p: Vector3):
 	for c in cover:
+		if cover_contains([c], p):
+			return c["pos"]
+	return null
+
+
+static func cover_contains(specs: Array, p: Vector3) -> bool:
+	for c in specs:
 		var local: Vector3 = (p - c["pos"]).rotated(Vector3.UP, -c["rot"])
 		if absf(local.x) <= c["half"].x and absf(local.z) <= c["half"].z \
 				and local.y >= 0.0 and local.y <= c["half"].y * 2.0:
@@ -438,26 +453,12 @@ func point_in_cover(p: Vector3) -> bool:
 	return false
 
 
-## Mode obstacles: ice walls to duck behind (Snow Brawl), rock pillars
-## (Boulder Brawl). Players collide with them; projectiles shatter on them.
-## Shared with ClientReplica; returns descriptors for the projectile check.
-static func build_cover(parent: Node3D, radius: float, mg: int) -> Array:
+## Stage obstacles (walls, pillars, bumpers, chicanes). Players collide with
+## them; projectiles shatter (or pucks bounce) on them. Shared with
+## ClientReplica; returns descriptors for the projectile check.
+static func build_cover(parent: Node3D, radius: float, preset: String) -> Array:
 	var specs: Array = []
-	var defs: Array = []
-	if mg == MatchConfig.Minigame.SNOW:
-		for i in 5:
-			var a := i * 2.399963
-			defs.append({
-				"pos": Vector3(sin(a), 0, cos(a)) * radius * 0.55,
-				"size": Vector3(2.6, 1.3, 0.5), "rot": a + PI * 0.5,
-				"color": Color(0.75, 0.86, 0.96)})
-	elif mg == MatchConfig.Minigame.BOULDER:
-		for i in 4:
-			var a := i * TAU / 4.0 + 0.6
-			defs.append({
-				"pos": Vector3(sin(a), 0, cos(a)) * radius * 0.5,
-				"size": Vector3(1.3, 1.7, 1.3), "rot": a,
-				"color": Color(0.45, 0.5, 0.56)})
+	var defs: Array = Stages.cover_defs(preset, radius)
 	for d in defs:
 		var body := StaticBody3D.new()
 		body.collision_layer = 1

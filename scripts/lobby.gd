@@ -7,6 +7,7 @@ extends Control
 @onready var _player_list: VBoxContainer = $Center/VBox/PlayerList
 @onready var _players_spin: SpinBox = $Center/VBox/PlayersRow/PlayersSpin
 @onready var _game_opt: OptionButton = $Center/VBox/GameRow/GameOption
+@onready var _stage_opt: OptionButton = $Center/VBox/GameRow/StageOption
 @onready var _variant_opt: OptionButton = $Center/VBox/VariantRow/VariantOption
 @onready var _difficulty_opt: OptionButton = $Center/VBox/DifficultyRow/DifficultyOption
 @onready var _target_spin: SpinBox = $Center/VBox/TargetRow/TargetSpin
@@ -33,11 +34,15 @@ func _ready() -> void:
 	_players_spin.set_value_no_signal(Net.lobby_player_count)
 	_bots_check.set_pressed_no_signal(Net.lobby_fill_bots)
 	_game_opt.selected = Net.lobby_minigame
+	_rebuild_stage_options(Net.lobby_minigame, Net.lobby_stage)
 	_variant_opt.selected = Net.lobby_variant
 	_difficulty_opt.selected = Net.lobby_difficulty
 	_target_spin.set_value_no_signal(Net.lobby_wins_target)
 	_char_opt.item_selected.connect(func(i: int) -> void: Net.set_my_archetype(i - 1))
-	_game_opt.item_selected.connect(func(_i: int) -> void: _push_config())
+	_game_opt.item_selected.connect(func(i: int) -> void:
+		_rebuild_stage_options(i, 0)
+		_push_config())
+	_stage_opt.item_selected.connect(func(_i: int) -> void: _push_config())
 	_players_spin.value_changed.connect(func(_v: float) -> void: _push_config())
 	_bots_check.toggled.connect(func(_on: bool) -> void: _push_config())
 	_variant_opt.item_selected.connect(func(_i: int) -> void: _push_config())
@@ -54,7 +59,14 @@ func _push_config() -> void:
 	if Net.is_server():
 		Net.set_lobby_config(int(_players_spin.value), _bots_check.button_pressed,
 			_variant_opt.selected, int(_target_spin.value), _difficulty_opt.selected,
-			_game_opt.selected)
+			_game_opt.selected, _stage_opt.selected)
+
+
+func _rebuild_stage_options(mg: int, selected: int) -> void:
+	_stage_opt.clear()
+	for i in Stages.count(mg):
+		_stage_opt.add_item(Stages.stage_name(mg, i))
+	_stage_opt.selected = clampi(selected, 0, Stages.count(mg) - 1)
 
 
 func _refresh() -> void:
@@ -98,10 +110,14 @@ func _refresh() -> void:
 	_variant_opt.disabled = not editable
 	_difficulty_opt.disabled = not editable
 	_target_spin.editable = editable
+	_stage_opt.disabled = not editable
 	if not editable:
 		_players_spin.set_value_no_signal(Net.lobby_player_count)
 		_bots_check.set_pressed_no_signal(Net.lobby_fill_bots)
 		_game_opt.selected = Net.lobby_minigame
+		if _stage_opt.item_count != Stages.count(Net.lobby_minigame):
+			_rebuild_stage_options(Net.lobby_minigame, Net.lobby_stage)
+		_stage_opt.selected = Net.lobby_stage
 		_variant_opt.selected = Net.lobby_variant
 		_difficulty_opt.selected = Net.lobby_difficulty
 		_target_spin.set_value_no_signal(Net.lobby_wins_target)

@@ -84,6 +84,19 @@ func _step_puck(id: int, p: Dictionary, dt: float) -> void:
 			p["vel"] = v.normalized() * clampf(v.length() * 1.05, START_SPEED, MAX_SPEED)
 			SoundBank.play("crack", -14.0)
 
+	# Stage obstacles (Bumper Rink): pucks ricochet off cover.
+	if _sim.point_in_cover(p["pos"]):
+		var center = _sim.cover_center_at(p["pos"])
+		if center != null:
+			var n: Vector3 = p["pos"] - center
+			n.y = 0.0
+			if n.length() > 0.001:
+				n = n.normalized()
+				var v: Vector3 = p["vel"]
+				if v.dot(n) < 0.0:
+					p["vel"] = v - 2.0 * v.dot(n) * n
+					SoundBank.play("crack", -16.0)
+
 	# Rim: score against the arc owner, or bounce off a neutralized arc.
 	var flat := Vector2(p["pos"].x, p["pos"].z)
 	if flat.length() >= _sim.arena_radius - GOAL_MARGIN:

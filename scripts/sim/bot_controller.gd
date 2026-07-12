@@ -170,7 +170,7 @@ func _race_input(player: SimPlayer, sim, prof: Dictionary) -> PlayerInput:
 	var pos: Vector3 = player.global_position
 	var a := atan2(pos.x, pos.z)
 	var ahead := a + 0.45
-	var lane_r: float = sim.arena_radius * RaceManager.LANE_FRACTION
+	var lane_r: float = sim.arena_radius * sim.race.lane_fraction
 	var target := Vector3(sin(ahead), 0.0, cos(ahead)) * lane_r
 	var to_t: Vector3 = target - pos
 	to_t.y = 0.0
