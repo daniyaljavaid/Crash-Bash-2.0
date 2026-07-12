@@ -55,7 +55,7 @@ func start_match(player_count: int, human_count: int,
 	_initial_radius = arena_radius
 	var platform := build_platform(arena_radius,
 		shape_for_minigame(minigame), platform_color_for_minigame(minigame),
-		stage.get("hole", 0.45))
+		stage.get("hole", 0.45), ArenaDressing.theme_accent(minigame))
 	add_child(platform)
 	_platform_shape = platform.get_meta("shape") if platform.has_meta("shape") else null
 	_platform_mesh = platform.get_meta("mesh") if platform.has_meta("mesh") else null
@@ -286,15 +286,76 @@ static func resize_platform(shape: CylinderShape3D, mesh: CylinderMesh, radius: 
 	mesh.bottom_radius = radius + 0.35
 
 
+## Procedural tiled floor texture: grout lines + per-tile brightness jitter.
+## Presentation only; headless servers keep a flat color.
+static func _make_floor_texture(base: Color) -> ImageTexture:
+	var img := Image.create(256, 256, false, Image.FORMAT_RGB8)
+	var tile := 32
+	for y in 256:
+		for x in 256:
+			var c: Color
+			if x % tile < 2 or y % tile < 2:
+				c = base.darkened(0.32)
+			else:
+				var h := float((((x / tile) * 73856093) ^ ((y / tile) * 19349663)) % 997) / 997.0
+				c = base.lightened(h * 0.12 - 0.04)
+			img.set_pixel(x, y, c)
+	return ImageTexture.create_from_image(img)
+
+
+## Glowing rim band hugging the platform edge — instant "produced arena" look.
+static func _add_rim_glow(platform: Node3D, radius: float, accent: Color,
+		p_shape: PlatformShape, hole_fraction: float) -> void:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = accent
+	mat.emission_enabled = true
+	mat.emission = accent
+	mat.emission_energy_multiplier = 1.6
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var radii: Array = []
+	if p_shape == PlatformShape.RING:
+		radii = [radius, radius * hole_fraction]
+	elif p_shape == PlatformShape.CIRCLE:
+		radii = [radius]
+	for r in radii:
+		var band := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = r - 0.1
+		torus.outer_radius = r + 0.12
+		torus.rings = 64
+		band.mesh = torus
+		band.material_override = mat
+		band.scale = Vector3(1, 0.16, 1)
+		band.position = Vector3(0, 0.05, 0)
+		platform.add_child(band)
+	if p_shape == PlatformShape.SQUARE:
+		for i in 4:
+			var a := TAU * i / 4.0
+			var strip := MeshInstance3D.new()
+			var mesh := BoxMesh.new()
+			mesh.size = Vector3(radius * 2.0 + 0.2, 0.08, 0.22)
+			strip.mesh = mesh
+			strip.material_override = mat
+			strip.position = Vector3(sin(a), 0, cos(a)) * radius + Vector3(0, 0.05, 0)
+			strip.rotation.y = a + PI * 0.5
+			platform.add_child(strip)
+
+
 ## Also used by ClientReplica for the visual copy of the arena. The returned
 ## node only carries "shape"/"mesh" meta for CIRCLE — the melting variant is a
 ## no-op on square courtyards and ring tracks.
 static func build_platform(radius: float,
 		p_shape := PlatformShape.CIRCLE, color := Color(0.78, 0.88, 0.97),
-		hole_fraction := 0.45) -> Node3D:
+		hole_fraction := 0.45, accent := Color(0.45, 0.7, 1.0)) -> Node3D:
+	var dressed := DisplayServer.get_name() != "headless"
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
-	mat.roughness = 0.15
+	mat.roughness = 0.3
+	if dressed:
+		mat.albedo_color = Color.WHITE.lerp(color, 0.25) # texture carries the hue
+		mat.albedo_texture = _make_floor_texture(color)
+		mat.uv1_triplanar = true
+		mat.uv1_scale = Vector3(0.105, 0.105, 0.105)
 
 	if p_shape == PlatformShape.RING:
 		# CSG ring: outer disc minus a center hole — fall through the middle.
@@ -314,6 +375,8 @@ static func build_platform(radius: float,
 		hole.sides = 32
 		hole.operation = CSGShape3D.OPERATION_SUBTRACTION
 		outer.add_child(hole)
+		if dressed:
+			_add_rim_glow(outer, radius, accent, p_shape, hole_fraction)
 		return outer
 
 	var platform := StaticBody3D.new()
@@ -349,6 +412,8 @@ static func build_platform(radius: float,
 	mesh_i.material_override = mat
 	platform.add_child(shape)
 	platform.add_child(mesh_i)
+	if dressed:
+		_add_rim_glow(platform, radius, accent, p_shape, hole_fraction)
 	return platform
 
 

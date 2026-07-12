@@ -55,7 +55,7 @@ func start(player_count: int) -> void:
 	var platform := MatchSim.build_platform(arena_radius,
 		MatchSim.shape_for_minigame(MatchConfig.minigame),
 		MatchSim.platform_color_for_minigame(MatchConfig.minigame),
-		stage.get("hole", 0.45))
+		stage.get("hole", 0.45), ArenaDressing.theme_accent(MatchConfig.minigame))
 	add_child(platform)
 	_platform_shape = platform.get_meta("shape") if platform.has_meta("shape") else null
 	_platform_mesh = platform.get_meta("mesh") if platform.has_meta("mesh") else null

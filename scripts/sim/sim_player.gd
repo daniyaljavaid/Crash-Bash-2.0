@@ -54,9 +54,12 @@ func setup(p_slot: int, p_stats: Dictionary, color: Color) -> void:
 	$Visual/FlipperR.material_override = _flat(color.darkened(0.25))
 	var white := _flat(Color(0.95, 0.96, 1.0))
 	$Visual/Belly.material_override = white
-	var eye := _flat(Color(0.08, 0.08, 0.1))
+	var eye := _flat(Color(0.97, 0.97, 1.0))
 	$Visual/EyeL.material_override = eye
 	$Visual/EyeR.material_override = eye
+	var pupil := _flat(Color(0.06, 0.06, 0.08))
+	$Visual/PupilL.material_override = pupil
+	$Visual/PupilR.material_override = pupil
 	var orange := _flat(Color(0.95, 0.6, 0.15))
 	$Visual/Beak.material_override = orange
 	$Visual/FootL.material_override = orange
