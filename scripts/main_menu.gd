@@ -13,6 +13,7 @@ extends Control
 @onready var _char_rows: VBoxContainer = $Center/VBox/CharRows
 
 var _char_opts: Array[OptionButton] = []
+var _look_opts: Array[OptionButton] = []
 @onready var _name_edit: LineEdit = $Center/VBox/NetRow/NameEdit
 @onready var _ip_edit: LineEdit = $Center/VBox/NetRow/IpEdit
 @onready var _port_edit: LineEdit = $Center/VBox/NetRow/PortEdit
@@ -68,6 +69,7 @@ func _rebuild_char_rows() -> void:
 	for child in _char_rows.get_children():
 		child.queue_free()
 	_char_opts = []
+	_look_opts = []
 	for i in int(_humans_spin.value):
 		var row := HBoxContainer.new()
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -78,10 +80,15 @@ func _rebuild_char_rows() -> void:
 		opt.add_item("Auto")
 		for arch in CharacterStats.ARCHETYPES:
 			opt.add_item(arch["name"])
+		var look := OptionButton.new()
+		for name in MatchConfig.LOOK_NAMES:
+			look.add_item(name)
 		row.add_child(label)
 		row.add_child(opt)
+		row.add_child(look)
 		_char_rows.add_child(row)
 		_char_opts.append(opt)
+		_look_opts.append(look)
 
 
 func _save_name() -> void:
@@ -95,11 +102,14 @@ func _on_start_local() -> void:
 	var choices: Array[int] = []
 	for opt in _char_opts:
 		choices.append(opt.selected - 1) # item 0 = Auto = -1
+	var looks: Array[int] = []
+	for opt in _look_opts:
+		looks.append(opt.selected)
 	MatchConfig.start_new_match(int(_players_spin.value), int(_humans_spin.value),
 		_variant_opt.selected as MatchConfig.Variant, int(_target_spin.value), choices,
 		_difficulty_opt.selected as MatchConfig.Difficulty,
 		_game_opt.selected as MatchConfig.Minigame, _stage_opt.selected,
-		_teams_opt.selected as MatchConfig.TeamMode)
+		_teams_opt.selected as MatchConfig.TeamMode, looks)
 	get_tree().change_scene_to_file("res://scenes/arena.tscn")
 
 

@@ -137,6 +137,9 @@ text = "Your character"
 [node name="CharOption" type="OptionButton" parent="Center/VBox/CharRow"]
 layout_mode = 2
 
+[node name="LookOption" type="OptionButton" parent="Center/VBox/CharRow"]
+layout_mode = 2
+
 [node name="BotsCheck" type="CheckButton" parent="Center/VBox"]
 layout_mode = 2
 button_pressed = true

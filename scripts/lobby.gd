@@ -43,6 +43,10 @@ func _ready() -> void:
 	_teams_opt.selected = Net.lobby_team_mode
 	_target_spin.set_value_no_signal(Net.lobby_wins_target)
 	_char_opt.item_selected.connect(func(i: int) -> void: Net.set_my_archetype(i - 1))
+	var look_opt: OptionButton = $Center/VBox/CharRow/LookOption
+	for name in MatchConfig.LOOK_NAMES:
+		look_opt.add_item(name)
+	look_opt.item_selected.connect(func(i: int) -> void: Net.set_my_look(i))
 	_teams_opt.item_selected.connect(func(_i: int) -> void: _push_config())
 	_game_opt.item_selected.connect(func(i: int) -> void:
 		_rebuild_stage_options(i, 0)

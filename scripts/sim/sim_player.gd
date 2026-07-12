@@ -47,13 +47,27 @@ func setup(p_slot: int, p_stats: Dictionary, color: Color) -> void:
 	collision_layer = 2
 	collision_mask = 3 # platform (1) + other players (2)
 	_base_color = color
+	var look := MatchConfig.look_for_slot(slot)
+	if look == 0:
+		_dress_penguin(color)
+	else:
+		# Alternative rigs replace the penguin nodes entirely.
+		for child in _visual.get_children():
+			child.queue_free()
+		match look:
+			1: _build_blocky(color)
+			2: _build_snowman(color)
+			3: _build_robot(color)
+	_apply_archetype_look()
+
+
+func _dress_penguin(color: Color) -> void:
 	var body_mat := StandardMaterial3D.new()
 	body_mat.albedo_color = color
 	_body.material_override = body_mat
 	$Visual/FlipperL.material_override = _flat(color.darkened(0.25))
 	$Visual/FlipperR.material_override = _flat(color.darkened(0.25))
-	var white := _flat(Color(0.95, 0.96, 1.0))
-	$Visual/Belly.material_override = white
+	$Visual/Belly.material_override = _flat(Color(0.95, 0.96, 1.0))
 	var eye := _flat(Color(0.97, 0.97, 1.0))
 	$Visual/EyeL.material_override = eye
 	$Visual/EyeR.material_override = eye
@@ -64,7 +78,112 @@ func setup(p_slot: int, p_stats: Dictionary, color: Color) -> void:
 	$Visual/Beak.material_override = orange
 	$Visual/FootL.material_override = orange
 	$Visual/FootR.material_override = orange
-	_apply_archetype_look()
+
+
+func _add_part(mesh: Mesh, pos: Vector3, mat: StandardMaterial3D,
+		rot := Vector3.ZERO) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.position = pos
+	mi.rotation = rot
+	_visual.add_child(mi)
+	return mi
+
+
+## Generic cube-person — deliberately NOT a minifigure (no stud, no C-hands);
+## the blocky style itself is fair game, LEGO's specific figure is not.
+func _build_blocky(color: Color) -> void:
+	var body_mesh := BoxMesh.new()
+	body_mesh.size = Vector3(0.62, 0.6, 0.42)
+	_body = _add_part(body_mesh, Vector3(0, -0.28, 0), _flat(color))
+	var head := BoxMesh.new()
+	head.size = Vector3(0.52, 0.46, 0.46)
+	_add_part(head, Vector3(0, 0.28, 0), _flat(color.lightened(0.25)))
+	var eye := BoxMesh.new()
+	eye.size = Vector3(0.1, 0.12, 0.04)
+	for side in [-1.0, 1.0]:
+		_add_part(eye, Vector3(side * 0.13, 0.32, -0.24), _flat(Color(0.08, 0.08, 0.1)))
+	var arm := BoxMesh.new()
+	arm.size = Vector3(0.16, 0.5, 0.16)
+	for side in [-1.0, 1.0]:
+		_add_part(arm, Vector3(side * 0.42, -0.25, 0), _flat(color.darkened(0.2)))
+	var leg := BoxMesh.new()
+	leg.size = Vector3(0.2, 0.3, 0.26)
+	for side in [-1.0, 1.0]:
+		_add_part(leg, Vector3(side * 0.16, -0.72, 0), _flat(color.darkened(0.35)))
+
+
+func _build_snowman(color: Color) -> void:
+	var base := SphereMesh.new()
+	base.radius = 0.46
+	base.height = 0.86
+	_add_part(base, Vector3(0, -0.42, 0), _flat(Color(0.95, 0.96, 1.0)))
+	var mid := SphereMesh.new()
+	mid.radius = 0.36
+	mid.height = 0.68
+	_body = _add_part(mid, Vector3(0, 0.08, 0), _flat(Color(0.92, 0.94, 0.99)))
+	var head := SphereMesh.new()
+	head.radius = 0.26
+	head.height = 0.5
+	_add_part(head, Vector3(0, 0.5, 0), _flat(Color(0.95, 0.96, 1.0)))
+	# Player color lives in the scarf + beanie so teams stay readable.
+	var scarf := TorusMesh.new()
+	scarf.inner_radius = 0.2
+	scarf.outer_radius = 0.34
+	_add_part(scarf, Vector3(0, 0.32, 0), _flat(color))
+	var hat := CylinderMesh.new()
+	hat.top_radius = 0.16
+	hat.bottom_radius = 0.24
+	hat.height = 0.22
+	_add_part(hat, Vector3(0, 0.72, 0), _flat(color.darkened(0.15)))
+	var eye := SphereMesh.new()
+	eye.radius = 0.045
+	eye.height = 0.09
+	for side in [-1.0, 1.0]:
+		_add_part(eye, Vector3(side * 0.09, 0.55, -0.22), _flat(Color(0.07, 0.07, 0.08)))
+	var carrot := CylinderMesh.new()
+	carrot.top_radius = 0.0
+	carrot.bottom_radius = 0.05
+	carrot.height = 0.26
+	_add_part(carrot, Vector3(0, 0.48, -0.32), _flat(Color(0.95, 0.55, 0.15)),
+		Vector3(-PI * 0.5, 0, 0))
+
+
+func _build_robot(color: Color) -> void:
+	var torso := BoxMesh.new()
+	torso.size = Vector3(0.58, 0.62, 0.44)
+	_body = _add_part(torso, Vector3(0, -0.2, 0), _flat(color))
+	var head := CylinderMesh.new()
+	head.top_radius = 0.24
+	head.bottom_radius = 0.26
+	head.height = 0.34
+	_add_part(head, Vector3(0, 0.3, 0), _flat(color.darkened(0.3)))
+	# Emissive visor: the robot's "face".
+	var visor := BoxMesh.new()
+	visor.size = Vector3(0.34, 0.1, 0.06)
+	var vmat := _flat(Color(0.4, 1.0, 0.9))
+	vmat.emission_enabled = true
+	vmat.emission = Color(0.4, 1.0, 0.9)
+	vmat.emission_energy_multiplier = 1.6
+	_add_part(visor, Vector3(0, 0.32, -0.24), vmat)
+	var antenna := CylinderMesh.new()
+	antenna.top_radius = 0.02
+	antenna.bottom_radius = 0.02
+	antenna.height = 0.24
+	_add_part(antenna, Vector3(0, 0.58, 0), _flat(Color(0.7, 0.75, 0.8)))
+	var tip := SphereMesh.new()
+	tip.radius = 0.05
+	tip.height = 0.1
+	_add_part(tip, Vector3(0, 0.72, 0), vmat)
+	var tread := BoxMesh.new()
+	tread.size = Vector3(0.56, 0.24, 0.5)
+	_add_part(tread, Vector3(0, -0.66, 0), _flat(Color(0.2, 0.22, 0.26)))
+	var shoulder := SphereMesh.new()
+	shoulder.radius = 0.14
+	shoulder.height = 0.28
+	for side in [-1.0, 1.0]:
+		_add_part(shoulder, Vector3(side * 0.38, 0.0, 0), _flat(color.darkened(0.25)))
 
 
 ## Silhouette + hat per archetype so builds read at a glance without models:

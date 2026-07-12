@@ -37,6 +37,9 @@ var team_mode := TeamMode.FFA
 var difficulty := Difficulty.MEDIUM     # bot decision quality; never stat cheats
 var wins_target := 3                    # round wins needed to take the trophy
 var archetype_choices: Array[int] = []  # per slot; -1 = auto (cycle by slot)
+
+const LOOK_NAMES := ["Penguin", "Blocky", "Snowman", "Robot"]
+var look_choices: Array[int] = []       # per slot; -1 = penguin
 var wins: Array[int] = []
 
 const RESOLUTIONS: Array = [
@@ -65,7 +68,7 @@ func _ready() -> void:
 func start_new_match(players: int, humans: int, p_variant := Variant.CLASSIC,
 		p_wins_target := 3, choices: Array[int] = [],
 		p_difficulty := Difficulty.MEDIUM, p_minigame := Minigame.SHOVE,
-		p_stage := 0, p_team_mode := TeamMode.FFA) -> void:
+		p_stage := 0, p_team_mode := TeamMode.FFA, looks: Array[int] = []) -> void:
 	player_count = clampi(players, 2, 8)
 	human_count = clampi(humans, 1, mini(4, player_count))
 	variant = p_variant
@@ -75,9 +78,17 @@ func start_new_match(players: int, humans: int, p_variant := Variant.CLASSIC,
 	difficulty = p_difficulty
 	wins_target = clampi(p_wins_target, 1, 5)
 	archetype_choices = []
+	look_choices = []
 	for i in player_count:
 		archetype_choices.append(choices[i] if i < choices.size() else -1)
+		look_choices.append(looks[i] if i < looks.size() else -1)
 	_reset_wins()
+
+
+func look_for_slot(slot: int) -> int:
+	if slot < look_choices.size() and look_choices[slot] >= 0:
+		return look_choices[slot] % LOOK_NAMES.size()
+	return 0
 
 
 func archetype_for_slot(slot: int) -> Dictionary:
@@ -235,3 +246,7 @@ func _parse_cmdline() -> void:
 			stage = maxi(arg.get_slice("=", 1).to_int(), 0)
 		elif arg.begins_with("teams="):
 			team_mode = clampi(arg.get_slice("=", 1).to_int(), 0, TeamMode.size() - 1) as TeamMode
+		elif arg.begins_with("looks="): # e.g. looks=0123 — per-slot body styles
+			look_choices = []
+			for c in arg.get_slice("=", 1):
+				look_choices.append(c.to_int())
