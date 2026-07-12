@@ -51,6 +51,7 @@ var vsync_enabled := true
 var fps_cap := 0 # 0 = uncapped
 var music_on := true
 var resolution_index := 0
+var show_fps := false
 var last_ip := "127.0.0.1"
 var last_port := 9050
 var player_name_local := ""            # shown to other players online
@@ -203,6 +204,7 @@ func save_settings() -> void:
 	cf.set_value("video", "fps_cap", fps_cap)
 	cf.set_value("audio", "music", music_on)
 	cf.set_value("video", "resolution", resolution_index)
+	cf.set_value("video", "show_fps", show_fps)
 	cf.set_value("net", "last_ip", last_ip)
 	cf.set_value("net", "last_port", last_port)
 	cf.set_value("net", "player_name", player_name_local)
@@ -217,6 +219,7 @@ func _load_settings() -> void:
 	fps_cap = cf.get_value("video", "fps_cap", 0)
 	music_on = cf.get_value("audio", "music", true)
 	resolution_index = cf.get_value("video", "resolution", 0)
+	show_fps = cf.get_value("video", "show_fps", false)
 	last_ip = cf.get_value("net", "last_ip", "127.0.0.1")
 	last_port = cf.get_value("net", "last_port", 9050)
 	player_name_local = cf.get_value("net", "player_name", "")

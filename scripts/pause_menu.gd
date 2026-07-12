@@ -26,6 +26,11 @@ func _ready() -> void:
 	# Phones/browsers own their window size.
 	$Center/Panel/VBox/ResRow.visible = not OS.has_feature("web") \
 		and not DisplayServer.is_touchscreen_available()
+	var fps_btn: CheckButton = $Center/Panel/VBox/ShowFps
+	fps_btn.button_pressed = MatchConfig.show_fps
+	fps_btn.toggled.connect(func(on: bool) -> void:
+		MatchConfig.show_fps = on
+		MatchConfig.save_settings())
 	var music_btn: CheckButton = $Center/Panel/VBox/Music
 	music_btn.button_pressed = MatchConfig.music_on
 	music_btn.toggled.connect(func(on: bool) -> void:
