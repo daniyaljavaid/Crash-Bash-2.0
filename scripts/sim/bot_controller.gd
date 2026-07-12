@@ -51,6 +51,9 @@ func get_player_input(player: SimPlayer, sim) -> PlayerInput:
 	# Floe Dash races the lane.
 	if sim.race != null:
 		return _race_input(player, sim, prof)
+	# Ball Barrage defends its side of the court.
+	if sim.barrage != null:
+		return _barrage_input(player, sim, prof)
 	# Boulder Brawl: fetch ammo when empty-handed; the throw itself reuses the
 	# normal engagement logic below (ranged like Snow Brawl).
 	if sim.boulders != null and not sim.boulders.carrying(player.slot):
@@ -182,6 +185,45 @@ func _race_input(player: SimPlayer, sim, prof: Dictionary) -> PlayerInput:
 	if player.recovery_left <= 0.0 and player.stamina >= Tuning.STAMINA_MAX * 0.95 \
 			and player.facing.dot(dir) > 0.85:
 		pi.charge = true
+	return pi
+
+
+## Ball Barrage: slide along my lane to where the most urgent incoming ball
+## will cross my side; dash for saves that are far and imminent.
+func _barrage_input(player: SimPlayer, sim, prof: Dictionary) -> PlayerInput:
+	var pi := PlayerInput.new()
+	var s := BarrageManager.side_of_slot(player.slot)
+	var normal: Vector3 = BarrageManager.SIDE_NORMALS[s]
+	var tangent := Vector3.UP.cross(normal)
+	var my_t := player.global_position.dot(tangent)
+	var target_t: float = my_t if player.slot < 4 else sim.arena_radius * 0.45
+	var best_eta := INF
+	for ball in sim.barrage.ball_list():
+		var vn: float = ball["vel"].dot(normal)
+		if vn <= 0.2:
+			continue
+		var dist: float = BarrageManager.lane_distance(sim.arena_radius) \
+			- ball["pos"].dot(normal)
+		if dist < 0.0:
+			continue
+		var eta := dist / vn
+		if eta >= best_eta:
+			continue
+		var cross_t: float = ball["pos"].dot(tangent) + ball["vel"].dot(tangent) * eta
+		if absf(cross_t) > sim.arena_radius:
+			continue
+		best_eta = eta
+		target_t = clampf(cross_t, -sim.arena_radius + 1.0, sim.arena_radius - 1.0)
+	# Aim noise scales with difficulty; the lane clamp forgives the rest.
+	target_t += sin(sim.tick * 0.05 + player.slot * 2.1) * float(prof["wobble"]) * 1.4
+	var delta_t: float = target_t - my_t
+	if absf(delta_t) > 0.15:
+		var desired := tangent * signf(delta_t)
+		pi.move = Vector2(desired.x, desired.z)
+		if best_eta < 1.0 and absf(delta_t) > 3.5 \
+				and player.recovery_left <= 0.0 \
+				and player.stamina >= player.stats.stamina_cost:
+			pi.charge = true # lunge for the save
 	return pi
 
 

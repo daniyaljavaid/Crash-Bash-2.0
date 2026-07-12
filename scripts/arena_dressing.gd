@@ -23,6 +23,8 @@ static func theme_accent(mg: int) -> Color:
 			return Color(0.4, 1.0, 0.8)
 		MatchConfig.Minigame.RACE:
 			return Color(1.0, 0.75, 0.2)
+		MatchConfig.Minigame.BARRAGE:
+			return Color(0.15, 0.95, 0.95)
 		_:
 			return Color(0.45, 0.7, 1.0)
 
@@ -41,6 +43,12 @@ func build(mg: int, radius: float) -> void:
 			_crystal_spires(radius, theme_accent(mg))
 		MatchConfig.Minigame.RACE:
 			_race_flags(radius)
+		MatchConfig.Minigame.BARRAGE:
+			# Tech court: corner towers with glowing bands, like a proper arena.
+			for i in 4:
+				var a := TAU * i / 4.0 + PI / 4.0
+				_pillar(Vector3(sin(a), 0, cos(a)) * radius * 1.5, 4.2, 1.1,
+					Color(0.28, 0.34, 0.4), theme_accent(mg))
 
 
 # --- shared pieces -----------------------------------------------------------
@@ -140,7 +148,7 @@ func _courtyard_walls(radius: float, accent: Color) -> void:
 		wall.mesh = mesh
 		wall.material_override = _flat(Color(0.42, 0.4, 0.52))
 		wall.position = Vector3(sin(a), 0, cos(a)) * radius * 1.35 + Vector3(0, -1.45, 0)
-		wall.rotation.y = a + PI * 0.5
+		wall.rotation.y = a # long axis onto the edge tangent
 		add_child(wall)
 	for i in 4:
 		var a := TAU * i / 4.0 + PI / 4.0

@@ -33,6 +33,7 @@ var tile_grid: TileGrid = null
 var pucks = null
 var boulders = null
 var race = null
+var barrage = null
 
 var _balls := {} # id -> {node, dir} — client-side flight matching the sim's path
 var _puck_nodes: Array[Node3D] = []      # rebuilt to match each snapshot
@@ -83,6 +84,9 @@ func start(player_count: int) -> void:
 		RaceManager.build_track_markers(self, arena_radius, RaceManager.lane_for_stage())
 		for i in player_count:
 			_race_progress.append(0.0)
+	elif MatchConfig.minigame == MatchConfig.Minigame.BARRAGE:
+		for i in player_count:
+			_lives.append(BarrageManager.START_COUNT)
 	for i in player_count:
 		var p: SimPlayer = MatchSim.PLAYER_SCENE.instantiate()
 		add_child(p)
@@ -235,6 +239,8 @@ func _on_snapshot(p_tick: int, p_state: int, p_time_left: float,
 		var floats := extra.to_float32_array()
 		for i in mini(floats.size(), _race_progress.size()):
 			_race_progress[i] = floats[i]
+	elif MatchConfig.minigame == MatchConfig.Minigame.BARRAGE:
+		_apply_pucks(extra) # same [x,z,vx,vz] wire format as Puck Panic
 	# Non-interpolated stats come straight from the newest snapshot.
 	for i in players.size():
 		var base := i * Net.PLAYER_STRIDE

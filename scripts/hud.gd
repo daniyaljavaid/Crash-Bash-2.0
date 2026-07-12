@@ -62,7 +62,8 @@ func _process(delta: float) -> void:
 		if _sim.tile_grid != null:
 			_cells[i]["count"].text = "%d tiles" % _sim.tile_grid.counts[i]
 		elif MatchConfig.minigame == MatchConfig.Minigame.GOAL \
-				or MatchConfig.minigame == MatchConfig.Minigame.BOULDER:
+				or MatchConfig.minigame == MatchConfig.Minigame.BOULDER \
+				or MatchConfig.minigame == MatchConfig.Minigame.BARRAGE:
 			var l: int = _sim.player_lives(i)
 			if l >= 0:
 				_cells[i]["count"].text = "%d ♥" % l

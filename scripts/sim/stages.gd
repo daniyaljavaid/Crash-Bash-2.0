@@ -45,6 +45,12 @@ const DEFS := {
 		{"name": "Boulevard", "hole": 0.3, "size": 1.15},
 		{"name": "Chicane Run", "cover": "chicanes3"},
 	],
+	MatchConfig.Minigame.BARRAGE: [
+		{"name": "Center Court"},
+		{"name": "Speed Court", "speed": 1.35},
+		{"name": "Twin Volley", "balls": 3},
+		{"name": "Mini Court", "size": 0.8},
+	],
 }
 
 const ICE := Color(0.75, 0.86, 0.96)

@@ -34,6 +34,7 @@ var snowballs: SnowballManager = null
 var pucks: PuckManager = null
 var boulders: BoulderManager = null
 var race: RaceManager = null
+var barrage: BarrageManager = null
 var minigame := MatchConfig.Minigame.SHOVE
 
 var cover: Array = [] # {pos, half: Vector3, rot: float} — projectile-blocking obstacles
@@ -63,13 +64,13 @@ func start_match(player_count: int, human_count: int,
 	if minigame == MatchConfig.Minigame.GOAL:
 		build_rink_paint(self, arena_radius)
 	_build_kill_zone()
-	if MatchConfig.has_ice_blocks():
+	if MatchConfig.has_ice_blocks() and minigame != MatchConfig.Minigame.BARRAGE:
 		ice_ring = IceBlockRing.new()
 		add_child(ice_ring)
 		ice_ring.build(arena_radius)
 		ice_ring.block_destroyed.connect(
 			func(index: int, at: Vector3) -> void: block_destroyed.emit(index, at))
-	if MatchConfig.has_power_ups():
+	if MatchConfig.has_power_ups() and minigame != MatchConfig.Minigame.BARRAGE:
 		power_ups = PowerUpManager.new()
 		add_child(power_ups)
 		power_ups.setup(self)
@@ -106,6 +107,14 @@ func start_match(player_count: int, human_count: int,
 		add_child(race)
 		race.setup(self)
 		race.lap_completed.connect(_on_goal_scored) # laps ride the lives channel
+	elif minigame == MatchConfig.Minigame.BARRAGE:
+		barrage = BarrageManager.new()
+		add_child(barrage)
+		barrage.setup(self, stage)
+		barrage.counter_changed.connect(_on_goal_scored)
+		barrage.ball_launched.connect(
+			func(id: int, at: Vector3) -> void: ball_spawned.emit(id, at, Vector3.ZERO))
+		_position_defenders()
 	if minigame == MatchConfig.Minigame.GOAL:
 		pucks = PuckManager.new()
 		add_child(pucks)
@@ -119,6 +128,32 @@ func start_match(player_count: int, human_count: int,
 	countdown_left = Tuning.COUNTDOWN_TIME
 	state = State.COUNTDOWN
 	_started = true
+
+
+## Ball Barrage: defenders live on a lane along their own side of the court —
+## reposition spawns onto the lanes (pairs share a side at 5-8 players).
+func _position_defenders() -> void:
+	var lane := BarrageManager.lane_distance(arena_radius)
+	for p in players:
+		var s := BarrageManager.side_of_slot(p.slot)
+		var normal: Vector3 = BarrageManager.SIDE_NORMALS[s]
+		var tangent := Vector3.UP.cross(normal)
+		var offset := 0.0 if p.slot < 4 else arena_radius * 0.45
+		p.global_position = normal * lane + tangent * offset + Vector3(0, 1.0, 0)
+		p.facing = -normal
+		p.rotation.y = atan2(-p.facing.x, -p.facing.z)
+		p.reset_physics_interpolation()
+
+
+func _clamp_to_lane(p: SimPlayer) -> void:
+	var s := BarrageManager.side_of_slot(p.slot)
+	var normal: Vector3 = BarrageManager.SIDE_NORMALS[s]
+	var tangent := Vector3.UP.cross(normal)
+	var lane := BarrageManager.lane_distance(arena_radius)
+	var t := clampf(p.global_position.dot(tangent), -arena_radius + 1.0, arena_radius - 1.0)
+	var y := p.global_position.y
+	p.global_position = normal * lane + tangent * t + Vector3(0, y, 0)
+	p.velocity -= normal * p.velocity.dot(normal)
 
 
 ## Shared "counter changed" plumbing: Puck Panic lives, Boulder Brawl hearts,
@@ -159,8 +194,12 @@ func _physics_process(delta: float) -> void:
 				var p := players[i]
 				if p.alive:
 					p.sim_tick(controllers[i].get_player_input(p, self), delta)
+					if barrage != null:
+						_clamp_to_lane(p)
 					if tile_grid != null and p.is_on_floor():
 						tile_grid.claim_under(p)
+			if barrage != null:
+				barrage.tick(delta)
 			if race != null:
 				race.tick()
 			_check_round_end()
@@ -174,6 +213,8 @@ func player_lives(slot: int) -> int:
 		return pucks.lives[slot]
 	if boulders != null:
 		return boulders.lives[slot]
+	if barrage != null:
+		return barrage.lives[slot]
 	return -1
 
 
@@ -238,7 +279,7 @@ enum PlatformShape { CIRCLE, SQUARE, RING }
 
 static func shape_for_minigame(mg: int) -> PlatformShape:
 	match mg:
-		MatchConfig.Minigame.TILE:
+		MatchConfig.Minigame.TILE, MatchConfig.Minigame.BARRAGE:
 			return PlatformShape.SQUARE
 		MatchConfig.Minigame.RACE:
 			return PlatformShape.RING
@@ -258,6 +299,8 @@ static func platform_color_for_minigame(mg: int) -> Color:
 			return Color(0.6, 0.64, 0.7)   # scarred glacier quarry
 		MatchConfig.Minigame.RACE:
 			return Color(0.8, 0.86, 0.95)
+		MatchConfig.Minigame.BARRAGE:
+			return Color(0.4, 0.47, 0.53)  # steel court
 		_:
 			return Color(0.78, 0.88, 0.97)
 
@@ -337,7 +380,8 @@ static func _add_rim_glow(platform: Node3D, radius: float, accent: Color,
 			strip.mesh = mesh
 			strip.material_override = mat
 			strip.position = Vector3(sin(a), 0, cos(a)) * radius + Vector3(0, 0.05, 0)
-			strip.rotation.y = a + PI * 0.5
+			# Rotating by `a` maps the box's long X axis onto the edge tangent.
+			strip.rotation.y = a
 			platform.add_child(strip)
 
 
@@ -490,7 +534,8 @@ func _check_round_end() -> void:
 			_finish()
 		elif time_left <= 0.0:
 			winner_slot = pucks.leader() if pucks != null \
-				else (boulders.leader() if boulders != null else -1)
+				else (boulders.leader() if boulders != null \
+				else (barrage.leader() if barrage != null else -1))
 			_finish()
 		return
 	var last_alive: SimPlayer = null
@@ -508,6 +553,8 @@ func _check_round_end() -> void:
 			winner_slot = pucks.leader()
 		elif boulders != null:
 			winner_slot = boulders.leader()
+		elif barrage != null:
+			winner_slot = barrage.leader()
 		else:
 			winner_slot = -1
 		_finish()

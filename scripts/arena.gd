@@ -287,6 +287,14 @@ func _apply_mode_theme() -> void:
 			sun.light_color = Color(1.0, 0.85, 0.65)
 			sun.light_energy = 1.3
 			env.fog_light_color = Color(0.3, 0.18, 0.14)
+		MatchConfig.Minigame.BARRAGE: # dark tech court
+			sky.sky_top_color = Color(0.008, 0.02, 0.03)
+			sky.sky_horizon_color = Color(0.04, 0.2, 0.24)
+			sky.ground_horizon_color = Color(0.04, 0.2, 0.24)
+			sun.light_color = Color(0.75, 0.95, 1.0)
+			sun.light_energy = 1.2
+			env.ambient_light_energy = 0.65
+			env.fog_light_color = Color(0.03, 0.12, 0.14)
 		_: # Shove Out keeps the classic arctic night
 			pass
 

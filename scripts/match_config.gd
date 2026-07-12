@@ -22,8 +22,8 @@ const VARIANT_NAMES := ["Classic", "Ice Blocks", "Melting Platform", "Power-Ups"
 enum Difficulty { EASY, MEDIUM, HARD, EXPERT }
 const DIFFICULTY_NAMES := ["Easy", "Medium", "Hard", "Expert"]
 
-enum Minigame { SHOVE, TILE, SNOW, GOAL, BOULDER, RACE }
-const MINIGAME_NAMES := ["Shove Out", "Tile Rush", "Snow Brawl", "Puck Panic", "Boulder Brawl", "Floe Dash"]
+enum Minigame { SHOVE, TILE, SNOW, GOAL, BOULDER, RACE, BARRAGE }
+const MINIGAME_NAMES := ["Shove Out", "Tile Rush", "Snow Brawl", "Puck Panic", "Boulder Brawl", "Floe Dash", "Ball Barrage"]
 
 enum TeamMode { FFA, ALTERNATING, HUMANS_VS_BOTS }
 const TEAM_MODE_NAMES := ["Free-for-All", "Two Teams", "Humans vs Bots"]
